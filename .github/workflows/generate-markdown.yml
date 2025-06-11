@@ -1,0 +1,36 @@
+name: Generate Markdown
+on: push
+
+# This workflow generates markdown files for telco-reference.
+
+jobs:
+  ollama:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install ollama
+        run: curl -fsSL https://ollama.com/install.sh | bash
+
+      - name: Pull ollama model
+        run: ollama pull llama3.2:latest
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone the telco-reference repository
+        uses: actions/checkout@v4
+        with:
+          repository: openshift-kni/telco-reference
+          path: telco-reference
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Build the tool
+        run: make build
+
+      - name: Generate summary YAMLs
+        run: |
+          ./readmebuilder ${GITHUB_WORKSPACE}/telco-reference
