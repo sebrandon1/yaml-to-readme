@@ -1,3 +1,4 @@
 readmebuilder
 vendor/
 .yaml_summary_cache/
+.DS_Store
