@@ -15,9 +15,27 @@ import (
 
 // Keeping a collection of models for future use.
 const (
-	ModelName = "llama3.2:latest"
-	// ModelName = "llama3.2:1b"
-	// ModelName = "qwen3:1.7b"
+	ModelName           = "llama3.2:latest"
+	DefaultCacheDirName = ".yaml_summary_cache"
+	MarkdownFileName    = "yaml_details.md"
+	MarkdownHeader      = `# YAML File Details
+
+This document provides an overview of all YAML files in the repository, organized by directory, with a brief description of what each file does or configures. Use this as a reference for understanding the purpose of each manifest or configuration file.
+
+---
+
+## How to Use
+- Click the file links to jump to the file in the repository.
+- Each entry includes a short summary of the file's intent or function.
+
+---
+
+<!--
+  To keep this file up to date, add new YAMLs as they are introduced and provide a short description for each.
+-->
+
+`
+	SummarizePrompt = "Summarize the purpose of this YAML file in no more than two short, high-level sentences. Do not include any lists, breakdowns, explanations, advice, notes, or formatting. Do not use markdown. No newlines. No code sections. Only output a single, concise summary of the file's purpose, and nothing else. Stop after two sentences. If you cannot summarize in two sentences, summarize in one: \n"
 )
 
 // findYAMLFiles recursively finds all YAML files under the given directory path.
@@ -41,10 +59,10 @@ func summarizeYAMLFile(ctx context.Context, client *ollama.Client, file string) 
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", file, err)
 	}
-	// Use a stricter prompt to avoid verbose or advisory output from the model
+	// Use the stricter prompt from const
 	req := &ollama.GenerateRequest{
 		Model:  ModelName,
-		Prompt: "Summarize the purpose of this YAML file in no more than two short, high-level sentences. Do not include any lists, breakdowns, explanations, advice, notes, or formatting. Do not use markdown. No newlines. No code sections. Only output a single, concise summary of the file's purpose, and nothing else. Stop after two sentences. If you cannot summarize in two sentences, summarize in one: \n" + string(content),
+		Prompt: SummarizePrompt + string(content),
 	}
 	var summary string
 	err = client.Generate(ctx, req, func(resp ollama.GenerateResponse) error {
@@ -91,31 +109,14 @@ func groupSummariesByDir(yamlFiles []string, summaries map[string]string, baseDi
 
 // writeMarkdownSummary writes the grouped summaries to a markdown file in the base directory.
 func writeMarkdownSummary(baseDir string, grouped map[string][][2]string) error {
-	mdPath := filepath.Join(baseDir, "yaml_details.md")
+	mdPath := filepath.Join(baseDir, MarkdownFileName)
 	f, err := os.Create(mdPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	head := `# YAML File Details
-
-This document provides an overview of all YAML files in the repository, organized by directory, with a brief description of what each file does or configures. Use this as a reference for understanding the purpose of each manifest or configuration file.
-
----
-
-## How to Use
-- Click the file links to jump to the file in the repository.
-- Each entry includes a short summary of the file's intent or function.
-
----
-
-<!--
-  To keep this file up to date, add new YAMLs as they are introduced and provide a short description for each.
--->
-
-`
-	if _, err := f.WriteString(head); err != nil {
+	if _, err := f.WriteString(MarkdownHeader); err != nil {
 		return err
 	}
 
@@ -187,7 +188,7 @@ func writeIndividualSummary(baseDir, filePath, summary string) error {
 	if err != nil {
 		return err
 	}
-	cacheDir := filepath.Join(repoRoot, ".yaml_summary_cache")
+	cacheDir := filepath.Join(repoRoot, DefaultCacheDirName)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return err
 	}
@@ -246,7 +247,7 @@ func runSummarizeYaml(dir string) error {
 	if err != nil {
 		return err
 	}
-	mdPath := filepath.Join(dir, "yaml_details.md")
+	mdPath := filepath.Join(dir, MarkdownFileName)
 	existingSummaries := parseExistingSummaries(mdPath)
 	client, err := ollama.ClientFromEnvironment()
 	if err != nil {

@@ -1,5 +1,6 @@
 name: Generate Markdown
-on: push
+on:
+  workflow_dispatch:
 
 # This workflow generates markdown files for telco-reference.
 
