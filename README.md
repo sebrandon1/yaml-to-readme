@@ -1,4 +1,4 @@
-# telco-ref-readme-builder
+# yaml-to-readme
 
 A CLI tool to recursively summarize YAML files in a directory using a local Ollama model, outputting results to a structured markdown file.
 

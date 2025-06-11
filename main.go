@@ -1,6 +1,6 @@
 package main
 
-import "github.com/sebrandon1/telco-ref-readme-builder/cmd"
+import "github.com/sebrandon1/yaml-to-readme/cmd"
 
 func main() {
 	_ = cmd.Execute()

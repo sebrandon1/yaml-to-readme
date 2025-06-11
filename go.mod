@@ -1,4 +1,4 @@
-module github.com/sebrandon1/telco-ref-readme-builder
+module github.com/sebrandon1/yaml-to-readme
 
 go 1.24.4
 
