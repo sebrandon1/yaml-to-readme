@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -53,27 +54,62 @@ func findYAMLFiles(dir string) ([]string, error) {
 	return yamlFiles, err
 }
 
+// cleanSummary removes markdown, lists, and breakdowns from the summary, keeping only a concise, plain-text summary.
+func cleanSummary(summary string) string {
+	lines := strings.Split(summary, "\n")
+	var cleaned []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "#") ||
+			strings.HasPrefix(trimmed, "**") ||
+			strings.HasPrefix(trimmed, "-") ||
+			strings.HasPrefix(trimmed, "Here's a breakdown") ||
+			strings.HasPrefix(trimmed, "The following") ||
+			strings.HasPrefix(trimmed, "* ") {
+			continue
+		}
+		cleaned = append(cleaned, trimmed)
+	}
+	return strings.Join(cleaned, " ")
+}
+
 // summarizeYAMLFile uses Ollama to generate a short summary for a YAML file.
 func summarizeYAMLFile(ctx context.Context, client *ollama.Client, file string) (string, error) {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", file, err)
 	}
-	// Use the stricter prompt from const
-	req := &ollama.GenerateRequest{
-		Model:  ModelName,
-		Prompt: SummarizePrompt + string(content),
+
+	falseVar := false
+	chatReq := &ollama.ChatRequest{
+		Model: ModelName,
+		Messages: []ollama.Message{
+			{
+				Role:    "user",
+				Content: SummarizePrompt + string(content),
+			},
+		},
+		Options: map[string]interface{}{
+			"seed": 42, // Seed for reproducibility
+		},
+		Stream: &falseVar, // Disable streaming for simplicity
 	}
+
 	var summary string
-	err = client.Generate(ctx, req, func(resp ollama.GenerateResponse) error {
-		summary += resp.Response
+	err = client.Chat(ctx, chatReq, func(resp ollama.ChatResponse) error {
+		summary += resp.Message.Content
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("Ollama error for %s: %w", file, err)
+		return "", fmt.Errorf("ollama chat error for %s: %w", file, err)
 	}
-	// Post-process: Truncate to the first two sentences (ending with a period, exclamation, or question mark)
-	trimmed := truncateToSentences(summary, 2)
+
+	// Clean and truncate summary
+	cleaned := cleanSummary(summary)
+	trimmed := truncateToSentences(cleaned, 2)
 	return trimmed, nil
 }
 
@@ -114,16 +150,38 @@ func writeMarkdownSummary(baseDir string, grouped map[string][][2]string) error 
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		cerr := f.Close()
+		if cerr != nil {
+			fmt.Fprintf(os.Stderr, "error closing file: %v\n", cerr)
+		}
+	}()
 
 	if _, err := f.WriteString(MarkdownHeader); err != nil {
 		return err
 	}
 
-	for dir, files := range grouped {
-		fmt.Fprintf(f, "\n## [%s/](../%s/)\n", dir, dir)
-		for _, entry := range files {
-			fmt.Fprintf(f, "- [%s](../%s/%s): %s\n", entry[0], dir, entry[0], entry[1])
+	dirs := make([]string, 0, len(grouped))
+	for dir := range grouped {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	for _, dir := range dirs {
+		files := grouped[dir]
+		// Sort files alphabetically by filename
+		sortedFiles := make([][2]string, len(files))
+		copy(sortedFiles, files)
+		sort.Slice(sortedFiles, func(i, j int) bool {
+			return sortedFiles[i][0] < sortedFiles[j][0]
+		})
+		if _, err := fmt.Fprintf(f, "\n## [%s/](../%s/)\n", dir, dir); err != nil {
+			return err
+		}
+		for _, entry := range sortedFiles {
+			if _, err := fmt.Fprintf(f, "- [%s](../%s/%s): %s\n", entry[0], dir, entry[0], entry[1]); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -144,16 +202,32 @@ func progressBar(current, total int) {
 // parseExistingSummaries parses an existing yaml_details.md and returns a map of file path to summary.
 func parseExistingSummaries(mdPath string) map[string]string {
 	existing := make(map[string]string)
-	f, err := os.Open(mdPath)
+	parseSummaryLines(readLinesFromFile(mdPath), existing)
+	return existing
+}
+
+// readLinesFromFile opens a file and returns its lines as a slice of strings.
+func readLinesFromFile(path string) []string {
+	f, err := os.Open(path)
 	if err != nil {
-		return existing
+		return nil
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	scanner := bufio.NewScanner(f)
-	var currentDir string
+	var lines []string
 	for scanner.Scan() {
-		line := scanner.Text()
+		lines = append(lines, scanner.Text())
+	}
+	return lines
+}
+
+// parseSummaryLines processes lines from the markdown and fills the map with file path to summary.
+func parseSummaryLines(lines []string, existing map[string]string) {
+	var currentDir string
+	for _, line := range lines {
 		if strings.HasPrefix(line, "## [") && strings.Contains(line, "](") {
 			// Extract directory from section header
 			start := strings.Index(line, "[") + 1
@@ -179,7 +253,6 @@ func parseExistingSummaries(mdPath string) map[string]string {
 			}
 		}
 	}
-	return existing
 }
 
 // writeIndividualSummary writes the summary for a single YAML file to a hidden cache directory in the repo root (where the binary is called from).
@@ -204,7 +277,12 @@ func writeIndividualSummary(baseDir, filePath, summary string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		cerr := f.Close()
+		if cerr != nil {
+			fmt.Fprintf(os.Stderr, "error closing file: %v\n", cerr)
+		}
+	}()
 	_, err = f.WriteString(summary)
 	return err
 }
