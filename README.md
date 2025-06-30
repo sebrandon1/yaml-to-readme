@@ -23,13 +23,20 @@ This will produce a binary named `readmebuilder` in the project directory.
 ```
 - `[directory]`: The root directory to recursively search for YAML files. Required.
 
-#### Example
-```
+#### Examples
+```bash
+# Basic usage - excludes hidden directories
 ./readmebuilder ./my-yaml-repo
+
+# Include hidden directories in the search
+./readmebuilder --include-hidden-directories ./my-yaml-repo
+
+# Regenerate all summaries and include hidden directories
+./readmebuilder --regenerate --include-hidden-directories ./my-yaml-repo
 ```
 
 This will:
-- Recursively find all `.yaml` and `.yml` files under `./my-yaml-repo`.
+- Recursively find all `.yaml` and `.yml` files under `./my-yaml-repo` (excluding hidden directories by default).
 - Summarize each file using the local Ollama model.
 - Write a grouped summary to `yaml_details.md` in the root of the provided directory.
 - Show a progress bar and timing information.
@@ -41,6 +48,8 @@ This will:
   Regenerate all summaries, even if they already exist in `yaml_details.md`.
 - `--localcache`  
   Write individual summaries to `.yaml_summary_cache` in the repo root for each YAML file processed.
+- `--include-hidden-directories`  
+  Include hidden directories (starting with `.`) when searching for YAML files. By default, hidden directories like `.git`, `.vscode`, etc. are skipped for performance.
 
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.
