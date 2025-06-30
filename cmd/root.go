@@ -40,12 +40,18 @@ This document provides an overview of all YAML files in the repository, organize
 )
 
 // findYAMLFiles recursively finds all YAML files under the given directory path.
-func findYAMLFiles(dir string) ([]string, error) {
+func findYAMLFiles(dir string, includeHidden bool) ([]string, error) {
 	var yamlFiles []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+
+		// Skip hidden directories unless includeHidden is true
+		if info.IsDir() && !includeHidden && strings.HasPrefix(info.Name(), ".") {
+			return filepath.SkipDir
+		}
+
 		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".yaml") || strings.HasSuffix(info.Name(), ".yml")) {
 			yamlFiles = append(yamlFiles, path)
 		}
@@ -321,7 +327,7 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 
 // runSummarizeYaml is the main logic for the summarize-yaml command.
 func runSummarizeYaml(dir string) error {
-	yamlFiles, err := findYAMLFiles(dir)
+	yamlFiles, err := findYAMLFiles(dir, includeHidden)
 	if err != nil {
 		return err
 	}
@@ -374,10 +380,12 @@ var rootCmd = &cobra.Command{
 
 var regenerate bool
 var localCache bool
+var includeHidden bool
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
 	rootCmd.Flags().BoolVar(&localCache, "localcache", false, "Write individual summaries to .yaml_summary_cache in the repo root. Mostly used for debugging or local development.")
+	rootCmd.Flags().BoolVar(&includeHidden, "include-hidden-directories", false, "Include hidden directories (starting with '.') when searching for YAML files")
 }
 
 // Execute runs the root Cobra command.
