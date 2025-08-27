@@ -7,7 +7,7 @@ A CLI tool to recursively summarize YAML files in a directory using a local Olla
 ### Prerequisites
 - [Ollama](https://ollama.com/) must be installed and running locally.
 - The desired model (default: `llama3.2:latest`) must be available in your local Ollama instance.
-- Go 1.24+ is required to build from source.
+- Go 1.25+ is required to build from source.
 
 ### Build
 
