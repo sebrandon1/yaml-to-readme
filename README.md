@@ -6,7 +6,7 @@ A CLI tool to recursively summarize YAML files in a directory using a local Olla
 
 ### Prerequisites
 - [Ollama](https://ollama.com/) must be installed and running locally.
-- The desired model (default: `llama3.2:latest`) must be available in your local Ollama instance.
+- The desired model (default: `llama3.2:latest`) must be available in your local Ollama instance. You can override the model at runtime with `--model`.
 - Go 1.25+ is required to build from source.
 
 ### Build
@@ -33,6 +33,9 @@ This will produce a binary named `readmebuilder` in the project directory.
 
 # Regenerate all summaries and include hidden directories
 ./readmebuilder --regenerate --include-hidden-directories ./my-yaml-repo
+
+# Specify a different Ollama model without recompiling
+./readmebuilder --model mistral:latest ./my-yaml-repo
 ```
 
 This will:
@@ -50,6 +53,8 @@ This will:
   Write individual summaries to `.yaml_summary_cache` in the repo root for each YAML file processed.
 - `--include-hidden-directories`  
   Include hidden directories (starting with `.`) when searching for YAML files. By default, hidden directories like `.git`, `.vscode`, etc. are skipped for performance.
+- `--model`  
+  Ollama model to use (default: `llama3.2:latest`). Example: `--model mistral:latest`.
 
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.

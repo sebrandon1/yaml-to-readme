@@ -21,9 +21,11 @@ vet:
 
 lint:
 	@echo -e "$(CYAN)Running golangci-lint...$(RESET)"
-	if ! command -v golangci-lint &> /dev/null; then \
-		GO111MODULE=on go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
-	fi
+	@if ! command -v golangci-lint &> /dev/null; then \
+		echo -e "$(YELLOW)golangci-lint not found.$(RESET)"; \
+		echo -e "$(YELLOW)Please install it (e.g., 'brew install golangci-lint' or see https://golangci-lint.run/) and re-run 'make lint'.$(RESET)"; \
+		exit 0; \
+	fi; \
 	golangci-lint run ./...
 
 test:
