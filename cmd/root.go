@@ -14,9 +14,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Keeping a collection of models for future use.
+// Keeping a collection of constants for future use.
 const (
-	ModelName           = "llama3.2:latest"
+	DefaultModelName    = "llama3.2:latest"
 	DefaultCacheDirName = ".yaml_summary_cache"
 	MarkdownFileName    = "yaml_details.md"
 	MarkdownHeader      = `# YAML File Details
@@ -38,6 +38,9 @@ This document provides an overview of all YAML files in the repository, organize
 `
 	SummarizePrompt = "Summarize the purpose of this YAML file in no more than two short, high-level sentences. Do not include any lists, breakdowns, explanations, advice, notes, or formatting. Do not use markdown. No newlines. No code sections. Only output a single, concise summary of the file's purpose, and nothing else. Stop after two sentences. If you cannot summarize in two sentences, summarize in one: \n"
 )
+
+// ModelName is configurable via the --model flag and defaults to DefaultModelName.
+var ModelName string = DefaultModelName
 
 // findYAMLFiles recursively finds all YAML files under the given directory path.
 func findYAMLFiles(dir string, includeHidden bool) ([]string, error) {
@@ -386,6 +389,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
 	rootCmd.Flags().BoolVar(&localCache, "localcache", false, "Write individual summaries to .yaml_summary_cache in the repo root. Mostly used for debugging or local development.")
 	rootCmd.Flags().BoolVar(&includeHidden, "include-hidden-directories", false, "Include hidden directories (starting with '.') when searching for YAML files")
+	rootCmd.Flags().StringVar(&ModelName, "model", DefaultModelName, "Ollama model to use (default: "+DefaultModelName+")")
 }
 
 // Execute runs the root Cobra command.
