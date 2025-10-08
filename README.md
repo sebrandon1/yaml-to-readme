@@ -56,6 +56,22 @@ This will:
 - `--model`  
   Ollama model to use (default: `llama3.2:latest`). Example: `--model mistral:latest`.
 
+### CLI Help
+
+```
+Summarize YAML files in a directory using Ollama
+
+Usage:
+  summarize-yaml [directory] [flags]
+
+Flags:
+  -h, --help                         help for summarize-yaml
+      --include-hidden-directories   Include hidden directories (starting with '.') when searching for YAML files
+      --localcache                   Write individual summaries to .yaml_summary_cache in the repo root. Mostly used for debugging or local development.
+      --model string                 Ollama model to use (default: llama3.2:latest) (default "llama3.2:latest")
+      --regenerate                   Regenerate all summaries, even if they already exist in yaml_details.md
+```
+
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.
 - Each entry includes a link to the YAML file and a concise, high-level summary (max two sentences).
