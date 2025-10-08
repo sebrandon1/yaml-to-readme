@@ -1,5 +1,9 @@
 # yaml-to-readme
 
+![Generate Markdown](https://github.com/sebrandon1/yaml-to-readme/actions/workflows/generate-markdown.yml/badge.svg)
+![Test Incoming Changes](https://github.com/sebrandon1/yaml-to-readme/actions/workflows/pre-main.yml/badge.svg)
+![Release binaries](https://github.com/sebrandon1/yaml-to-readme/actions/workflows/release-binaries.yaml/badge.svg)
+
 A CLI tool to recursively summarize YAML files in a directory using a local Ollama model, outputting results to a structured markdown file.
 
 ## How to Use
