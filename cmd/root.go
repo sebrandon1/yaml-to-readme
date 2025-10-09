@@ -86,7 +86,7 @@ func cleanSummary(summary string) string {
 }
 
 // summarizeYAMLFile uses Ollama to generate a short summary for a YAML file.
-func summarizeYAMLFile(ctx context.Context, client *ollama.Client, file string) (string, error) {
+func summarizeYAMLFile(ctx context.Context, client OllamaClient, file string) (string, error) {
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", file, err)
@@ -297,7 +297,7 @@ func writeIndividualSummary(baseDir, filePath, summary string) error {
 }
 
 // processYAMLFiles processes YAML files, generating summaries if needed, and returns the summaries map and counters.
-func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[string]string, client *ollama.Client, forceRegenerate bool) (map[string]string, int, int) {
+func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[string]string, client OllamaClient, forceRegenerate bool) (map[string]string, int, int) {
 	summaries := make(map[string]string)
 	skipped := 0
 	processed := 0
@@ -336,10 +336,11 @@ func runSummarizeYaml(dir string) error {
 	}
 	mdPath := filepath.Join(dir, MarkdownFileName)
 	existingSummaries := parseExistingSummaries(mdPath)
-	client, err := ollama.ClientFromEnvironment()
+	realClient, err := NewRealOllamaClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Ollama client: %w", err)
 	}
+	client := OllamaClient(realClient)
 
 	// Check if the model is available
 	response, err := client.List(context.Background())

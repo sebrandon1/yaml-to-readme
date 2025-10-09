@@ -16,8 +16,11 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run tests
+      - name: Run unit tests
         run: make test
+
+      - name: Run integration tests
+        run: make integration-test
 
       - name: Golangci-lint
         uses: golangci/golangci-lint-action@v8
