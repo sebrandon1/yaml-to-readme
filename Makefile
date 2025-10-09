@@ -13,7 +13,7 @@ YELLOW := \033[33m
 RED := \033[31m
 RESET := \033[0m
 
-.PHONY: vet lint test test-coverage coverage-html version info
+.PHONY: vet lint test test-coverage coverage-html integration-test version info
 
 vet:
 	@echo -e "$(CYAN)Running go vet...$(RESET)"
@@ -29,8 +29,12 @@ lint:
 	golangci-lint run ./...
 
 test:
-	@echo -e "$(CYAN)Running tests...$(RESET)"
-	go test ./...
+	@echo -e "$(CYAN)Running unit tests...$(RESET)"
+	go test -short ./...
+
+integration-test:
+	@echo -e "$(CYAN)Running integration tests...$(RESET)"
+	go test -v -run TestIntegration ./cmd/
 
 test-coverage:
 	@echo -e "$(CYAN)Running tests with coverage...$(RESET)"

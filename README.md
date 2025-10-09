@@ -67,6 +67,8 @@ This will:
 ### Makefile Targets
 - `make vet`   — Run `go vet` on the codebase.
 - `make lint`  — Run `golangci-lint` (installs if missing).
+- `make test`  — Run unit tests.
+- `make integration-test` — Run integration tests (uses mocked Ollama client).
 - `make build` — Build the binary.
 
 ---
