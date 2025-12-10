@@ -16,10 +16,10 @@ jobs:
         run: ollama pull llama3.2:latest
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Clone the telco-reference repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: openshift-kni/telco-reference
           path: telco-reference
