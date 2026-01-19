@@ -1,6 +1,6 @@
 module github.com/sebrandon1/yaml-to-readme
 
-go 1.25.5
+go 1.25.6
 
 require (
 	github.com/ollama/ollama v0.14.2
