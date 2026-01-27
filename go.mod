@@ -3,7 +3,7 @@ module github.com/sebrandon1/yaml-to-readme
 go 1.25.6
 
 require (
-	github.com/ollama/ollama v0.15.1
+	github.com/ollama/ollama v0.15.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
 )
