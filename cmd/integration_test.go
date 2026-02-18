@@ -70,7 +70,7 @@ func TestIntegrationBasicFlow(t *testing.T) {
 	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
 
 	// Read and verify the generated markdown
-	mdPath := filepath.Join(tmpDir, MarkdownFileName)
+	mdPath := filepath.Join(tmpDir, markdownFileName)
 	content, err := os.ReadFile(mdPath)
 	assert.NoError(t, err)
 	mdContent := string(content)
@@ -118,7 +118,7 @@ func TestIntegrationRegenerateFlag(t *testing.T) {
 	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
 
 	// Parse existing summaries
-	mdPath := filepath.Join(tmpDir, MarkdownFileName)
+	mdPath := filepath.Join(tmpDir, markdownFileName)
 	existingSummaries := parseExistingSummaries(mdPath)
 	assert.Len(t, existingSummaries, 1)
 	assert.Contains(t, existingSummaries["test.yaml"], "First summary")
@@ -165,7 +165,7 @@ func TestIntegrationHiddenDirectories(t *testing.T) {
 	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
 	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
 
-	mdPath := filepath.Join(tmpDir, MarkdownFileName)
+	mdPath := filepath.Join(tmpDir, markdownFileName)
 	content, err := os.ReadFile(mdPath)
 	assert.NoError(t, err)
 	assert.NotContains(t, string(content), ".hidden", "Should not include hidden directory")
@@ -218,7 +218,7 @@ func TestIntegrationMarkdownFormat(t *testing.T) {
 	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
 	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
 
-	mdPath := filepath.Join(tmpDir, MarkdownFileName)
+	mdPath := filepath.Join(tmpDir, markdownFileName)
 	content, err := os.ReadFile(mdPath)
 	assert.NoError(t, err)
 	lines := strings.Split(string(content), "\n")
@@ -393,10 +393,79 @@ func TestIntegrationLocalCache(t *testing.T) {
 	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
 	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
 
-	mdPath := filepath.Join(tmpDir, MarkdownFileName)
+	mdPath := filepath.Join(tmpDir, markdownFileName)
 	mdContent, err := os.ReadFile(mdPath)
 	assert.NoError(t, err)
 	assert.Contains(t, string(mdContent), "# YAML File Details")
+}
+
+// TestIntegrationCustomOutputAndCacheDir tests the --output and --cache-dir flags.
+func TestIntegrationCustomOutputAndCacheDir(t *testing.T) {
+	// Save and restore configurable vars
+	origMarkdownFileName := markdownFileName
+	origCacheDirName := cacheDirName
+	origLocalCache := localCache
+	origDir, err := os.Getwd()
+	assert.NoError(t, err)
+	defer func() {
+		markdownFileName = origMarkdownFileName
+		cacheDirName = origCacheDirName
+		localCache = origLocalCache
+		_ = os.Chdir(origDir)
+	}()
+
+	tmpDir, err := os.MkdirTemp("", "integration_test_custom_output_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	assert.NoError(t, os.Chdir(tmpDir))
+
+	// Create a YAML file
+	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test.yaml"), []byte("test: data"), 0644))
+
+	mockClient := NewMockOllamaClient()
+	mockClient.DefaultResponse = "Custom output test summary."
+
+	// Set custom output filename and cache dir
+	markdownFileName = "custom_output.md"
+	cacheDirName = ".custom_cache"
+	localCache = true
+
+	yamlFiles, err := findYAMLFiles(tmpDir, false)
+	assert.NoError(t, err)
+
+	summaries, processed, _ := processYAMLFiles(yamlFiles, tmpDir, make(map[string]string), mockClient, false)
+	assert.Equal(t, 1, processed)
+
+	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
+	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
+
+	// Verify custom output filename was used
+	customMdPath := filepath.Join(tmpDir, "custom_output.md")
+	content, err := os.ReadFile(customMdPath)
+	assert.NoError(t, err, "custom output file should exist")
+	assert.Contains(t, string(content), "# YAML File Details")
+
+	// Verify default filename was NOT created
+	_, err = os.Stat(filepath.Join(tmpDir, DefaultMarkdownFileName))
+	assert.True(t, os.IsNotExist(err), "default output file should not exist")
+
+	// Verify custom cache directory was used
+	customCacheDir := filepath.Join(tmpDir, ".custom_cache")
+	info, err := os.Stat(customCacheDir)
+	assert.NoError(t, err, "custom cache directory should exist")
+	assert.True(t, info.IsDir())
+
+	// Verify default cache directory was NOT created
+	_, err = os.Stat(filepath.Join(tmpDir, DefaultCacheDirName))
+	assert.True(t, os.IsNotExist(err), "default cache directory should not exist")
+
+	// Verify cache file exists in custom cache dir
+	entries, err := os.ReadDir(customCacheDir)
+	assert.NoError(t, err)
+	assert.Len(t, entries, 1)
 }
 
 // TestIntegrationModelAvailability tests the model availability check.
