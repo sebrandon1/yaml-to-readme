@@ -598,3 +598,112 @@ func TestIntegrationModelAvailability(t *testing.T) {
 	}
 	assert.False(t, modelAvailable, "Default model should not be available")
 }
+
+// TestIntegrationRunSummarizeYamlWithClient tests the full orchestration flow with a mock client.
+func TestIntegrationRunSummarizeYamlWithClient(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_orchestration_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	// Save and restore flags
+	origIncludeHidden := includeHidden
+	origRegenerate := regenerate
+	defer func() {
+		includeHidden = origIncludeHidden
+		regenerate = origRegenerate
+	}()
+	includeHidden = false
+	regenerate = false
+
+	// Create test YAML files
+	subDir := filepath.Join(tmpDir, "app")
+	assert.NoError(t, os.MkdirAll(subDir, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("apiVersion: v1\nkind: ConfigMap"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "deploy.yaml"), []byte("apiVersion: apps/v1\nkind: Deployment"), 0644))
+
+	mockClient := NewMockOllamaClient()
+	mockClient.MockResponses = map[string]string{
+		"kind: ConfigMap":  "This is a ConfigMap for application settings.",
+		"kind: Deployment": "This is a Deployment for the web service.",
+	}
+	mockClient.AvailableModels = []string{DefaultModelName}
+
+	// Run the full orchestration
+	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	assert.NoError(t, err)
+
+	// Verify output file was created
+	mdPath := filepath.Join(tmpDir, markdownFileName)
+	content, err := os.ReadFile(mdPath)
+	assert.NoError(t, err)
+	mdContent := string(content)
+	assert.Contains(t, mdContent, "# YAML File Details")
+	assert.Contains(t, mdContent, "config.yaml")
+	assert.Contains(t, mdContent, "deploy.yaml")
+	assert.Contains(t, mdContent, "ConfigMap for application settings")
+	assert.Contains(t, mdContent, "Deployment for the web service")
+}
+
+// TestIntegrationRunSummarizeYamlWithClientModelUnavailable tests error handling for unavailable models.
+func TestIntegrationRunSummarizeYamlWithClientModelUnavailable(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_model_unavail_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test.yaml"), []byte("test: data"), 0644))
+
+	mockClient := NewMockOllamaClient()
+	mockClient.AvailableModels = []string{"some-other-model"}
+
+	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not available")
+}
+
+// TestIntegrationRunSummarizeYamlWithClientRegenerate tests the regenerate flow through the orchestrator.
+func TestIntegrationRunSummarizeYamlWithClientRegenerate(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_orch_regen_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	origRegenerate := regenerate
+	origIncludeHidden := includeHidden
+	defer func() {
+		regenerate = origRegenerate
+		includeHidden = origIncludeHidden
+	}()
+	includeHidden = false
+
+	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test.yaml"), []byte("test: data"), 0644))
+
+	mockClient := NewMockOllamaClient()
+	mockClient.DefaultResponse = "First run summary."
+	mockClient.AvailableModels = []string{DefaultModelName}
+
+	// First run
+	regenerate = false
+	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	assert.NoError(t, err)
+
+	// Verify first summary
+	mdPath := filepath.Join(tmpDir, markdownFileName)
+	content, err := os.ReadFile(mdPath)
+	assert.NoError(t, err)
+	assert.Contains(t, string(content), "First run summary")
+
+	// Second run with regenerate
+	mockClient.DefaultResponse = "Regenerated summary."
+	regenerate = true
+	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	assert.NoError(t, err)
+
+	content, err = os.ReadFile(mdPath)
+	assert.NoError(t, err)
+	assert.Contains(t, string(content), "Regenerated summary")
+}

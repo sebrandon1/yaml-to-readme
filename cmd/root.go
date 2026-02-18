@@ -418,17 +418,21 @@ func runSummarizeYaml(dir string) error {
 		return runDryRun(dir)
 	}
 
+	realClient, err := NewRealOllamaClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Ollama client: %w", err)
+	}
+	return runSummarizeYamlWithClient(dir, OllamaClient(realClient))
+}
+
+// runSummarizeYamlWithClient contains the core summarization logic, accepting an OllamaClient for testability.
+func runSummarizeYamlWithClient(dir string, client OllamaClient) error {
 	yamlFiles, err := findYAMLFiles(dir, includeHidden)
 	if err != nil {
 		return err
 	}
 	mdPath := filepath.Join(dir, markdownFileName)
 	existingSummaries := parseExistingSummaries(mdPath)
-	realClient, err := NewRealOllamaClient()
-	if err != nil {
-		return fmt.Errorf("failed to create Ollama client: %w", err)
-	}
-	client := OllamaClient(realClient)
 
 	// Check if the model is available
 	response, err := client.List(context.Background())
