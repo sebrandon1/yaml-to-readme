@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,16 @@ import (
 	ollama "github.com/ollama/ollama/api"
 	"github.com/spf13/cobra"
 )
+
+// setupLogging configures the slog default logger based on the verbose flag.
+func setupLogging() {
+	level := slog.LevelWarn
+	if verbose {
+		level = slog.LevelDebug
+	}
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	slog.SetDefault(slog.New(handler))
+}
 
 // Keeping a collection of constants for future use.
 const (
@@ -68,6 +79,7 @@ func findYAMLFiles(dir string, includeHidden bool) ([]string, error) {
 		}
 		return nil
 	})
+	slog.Debug("found YAML files", "count", len(yamlFiles), "dir", dir, "includeHidden", includeHidden)
 	return yamlFiles, err
 }
 
@@ -95,6 +107,7 @@ func cleanSummary(summary string) string {
 
 // summarizeYAMLFile uses Ollama to generate a short summary for a YAML file.
 func summarizeYAMLFile(ctx context.Context, client OllamaClient, file string) (string, error) {
+	slog.Debug("summarizing file", "file", file, "model", ModelName)
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", file, err)
@@ -317,6 +330,7 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 		rel = filepath.ToSlash(rel)
 		if !forceRegenerate {
 			if summary, ok := existingSummaries[rel]; ok && summary != "" {
+				slog.Debug("skipping file with existing summary", "file", rel)
 				summaries[file] = summary
 				skipped++
 				continue
@@ -352,7 +366,7 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 
 			summary, err := summarizeYAMLFile(context.Background(), client, f)
 			if err != nil {
-				fmt.Println(err)
+				slog.Error("failed to summarize file", "file", f, "error", err)
 				completed.Add(1)
 				progressBar(int(completed.Load()), total)
 				return
@@ -414,6 +428,7 @@ func runDryRun(dir string) error {
 
 // runSummarizeYaml is the main logic for the summarize-yaml command.
 func runSummarizeYaml(dir string) error {
+	setupLogging()
 	if dryRun {
 		return runDryRun(dir)
 	}
@@ -427,6 +442,7 @@ func runSummarizeYaml(dir string) error {
 
 // runSummarizeYamlWithClient contains the core summarization logic, accepting an OllamaClient for testability.
 func runSummarizeYamlWithClient(dir string, client OllamaClient) error {
+	slog.Debug("starting summarization", "dir", dir, "model", ModelName, "concurrency", concurrency)
 	yamlFiles, err := findYAMLFiles(dir, includeHidden)
 	if err != nil {
 		return err
@@ -479,6 +495,7 @@ var localCache bool
 var includeHidden bool
 var dryRun bool
 var concurrency int
+var verbose bool
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -489,6 +506,7 @@ func init() {
 	rootCmd.Flags().StringVar(&cacheDirName, "cache-dir", DefaultCacheDirName, "Cache directory name for --localcache (default: "+DefaultCacheDirName+")")
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview which YAML files would be processed without calling the LLM")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
+	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
 }
 
 // Execute runs the root Cobra command.
