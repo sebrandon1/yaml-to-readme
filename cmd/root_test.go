@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -185,6 +186,48 @@ func TestWriteIndividualSummaryFallback(t *testing.T) {
 	content, err := os.ReadFile(cacheFilePath)
 	assert.NoError(t, err, "cache file should exist with fallback name")
 	assert.Equal(t, "External summary.", string(content))
+}
+
+func TestMockLLMProvider(t *testing.T) {
+	mock := NewMockLLMProvider()
+
+	// Test defaults
+	assert.Equal(t, "mock", mock.Name())
+	available, err := mock.Available(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, available)
+
+	// Test default response
+	summary, err := mock.Summarize(context.Background(), "some content", "prompt: ")
+	assert.NoError(t, err)
+	assert.Equal(t, "This is a mock summary for testing purposes.", summary)
+
+	// Test matched response
+	mock.MockResponses["ConfigMap"] = "This is a ConfigMap."
+	summary, err = mock.Summarize(context.Background(), "kind: ConfigMap", "prompt: ")
+	assert.NoError(t, err)
+	assert.Equal(t, "This is a ConfigMap.", summary)
+
+	// Test unavailable
+	mock.ModelAvailable = false
+	available, err = mock.Available(context.Background())
+	assert.NoError(t, err)
+	assert.False(t, available)
+}
+
+func TestCreateProviderOpenAIMissingKey(t *testing.T) {
+	origProvider := provider
+	defer func() {
+		provider = origProvider
+	}()
+
+	// createProvider with "openai" without OPENAI_API_KEY should return an error
+	provider = "openai"
+	t.Setenv("OPENAI_API_KEY", "")
+
+	_, err := createProvider()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "OPENAI_API_KEY")
 }
 
 func TestFindYAMLFilesHiddenDirectories(t *testing.T) {

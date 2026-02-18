@@ -15,7 +15,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	ollama "github.com/ollama/ollama/api"
 	"github.com/spf13/cobra"
 )
 
@@ -107,36 +106,17 @@ func cleanSummary(summary string) string {
 	return strings.Join(cleaned, " ")
 }
 
-// summarizeYAMLFile uses Ollama to generate a short summary for a YAML file.
-func summarizeYAMLFile(ctx context.Context, client OllamaClient, file string) (string, error) {
-	slog.Debug("summarizing file", "file", file, "model", ModelName)
+// summarizeYAMLFile uses an LLM provider to generate a short summary for a YAML file.
+func summarizeYAMLFile(ctx context.Context, provider LLMProvider, file string) (string, error) {
+	slog.Debug("summarizing file", "file", file, "model", ModelName, "provider", provider.Name())
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", file, err)
 	}
 
-	falseVar := false
-	chatReq := &ollama.ChatRequest{
-		Model: ModelName,
-		Messages: []ollama.Message{
-			{
-				Role:    "user",
-				Content: SummarizePrompt + string(content),
-			},
-		},
-		Options: map[string]interface{}{
-			"seed": 42, // Seed for reproducibility
-		},
-		Stream: &falseVar, // Disable streaming for simplicity
-	}
-
-	var summary string
-	err = client.Chat(ctx, chatReq, func(resp ollama.ChatResponse) error {
-		summary += resp.Message.Content
-		return nil
-	})
+	summary, err := provider.Summarize(ctx, string(content), SummarizePrompt)
 	if err != nil {
-		return "", fmt.Errorf("ollama chat error for %s: %w", file, err)
+		return "", fmt.Errorf("%s error for %s: %w", provider.Name(), file, err)
 	}
 
 	// Clean and truncate summary
@@ -478,7 +458,7 @@ func writeIndividualSummary(baseDir, filePath, summary string) error {
 }
 
 // processYAMLFiles processes YAML files, generating summaries if needed, and returns the summaries map and counters.
-func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[string]string, client OllamaClient, forceRegenerate bool) (map[string]string, int, int) {
+func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[string]string, provider LLMProvider, forceRegenerate bool) (map[string]string, int, int) {
 	summaries := make(map[string]string)
 	total := len(yamlFiles)
 	skipped := 0
@@ -524,7 +504,7 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 			defer wg.Done()
 			defer func() { <-sem }() // Release semaphore slot
 
-			summary, err := summarizeYAMLFile(context.Background(), client, f)
+			summary, err := summarizeYAMLFile(context.Background(), provider, f)
 			if err != nil {
 				slog.Error("failed to summarize file", "file", f, "error", err)
 				completed.Add(1)
@@ -586,6 +566,16 @@ func runDryRun(dir string) error {
 	return nil
 }
 
+// createProvider creates an LLMProvider based on the --provider flag.
+func createProvider() (LLMProvider, error) {
+	switch provider {
+	case "openai":
+		return NewOpenAIProvider()
+	default:
+		return NewOllamaProvider()
+	}
+}
+
 // runSummarizeYaml is the main logic for the summarize-yaml command.
 func runSummarizeYaml(dir string) error {
 	setupLogging()
@@ -593,16 +583,16 @@ func runSummarizeYaml(dir string) error {
 		return runDryRun(dir)
 	}
 
-	realClient, err := NewRealOllamaClient()
+	llm, err := createProvider()
 	if err != nil {
-		return fmt.Errorf("failed to create Ollama client: %w", err)
+		return fmt.Errorf("failed to create %s provider: %w", provider, err)
 	}
-	return runSummarizeYamlWithClient(dir, OllamaClient(realClient))
+	return runSummarizeYamlWithProvider(dir, llm)
 }
 
-// runSummarizeYamlWithClient contains the core summarization logic, accepting an OllamaClient for testability.
-func runSummarizeYamlWithClient(dir string, client OllamaClient) error {
-	slog.Debug("starting summarization", "dir", dir, "model", ModelName, "concurrency", concurrency)
+// runSummarizeYamlWithProvider contains the core summarization logic, accepting an LLMProvider for testability.
+func runSummarizeYamlWithProvider(dir string, llm LLMProvider) error {
+	slog.Debug("starting summarization", "dir", dir, "model", ModelName, "provider", llm.Name(), "concurrency", concurrency)
 	yamlFiles, err := findYAMLFiles(dir, includeHidden)
 	if err != nil {
 		return err
@@ -611,29 +601,22 @@ func runSummarizeYamlWithClient(dir string, client OllamaClient) error {
 	existingSummaries := parseExistingSummaries(mdPath)
 
 	// Check if the model is available
-	response, err := client.List(context.Background())
+	modelAvailable, err := llm.Available(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to list models: %w", err)
-	}
-	modelAvailable := false
-	for _, model := range response.Models {
-		if model.Name == ModelName {
-			modelAvailable = true
-			break
-		}
+		return fmt.Errorf("failed to check model availability: %w", err)
 	}
 	if !modelAvailable {
-		return fmt.Errorf("model %s is not available. Please ensure it is downloaded and available in Ollama", ModelName)
+		return fmt.Errorf("model %s is not available. Please ensure it is downloaded and available in your %s provider", ModelName, llm.Name())
 	}
 
 	start := time.Now()
-	summaries, processed, skipped := processYAMLFiles(yamlFiles, dir, existingSummaries, client, regenerate)
+	summaries, processed, skipped := processYAMLFiles(yamlFiles, dir, existingSummaries, llm, regenerate)
 	elapsed := time.Since(start)
 	grouped := groupSummariesByDir(yamlFiles, summaries, dir)
 	if err := writeSummary(dir, grouped); err != nil {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
-	fmt.Printf("\nMarkdown summary written to %s\n", mdPath)
+	fmt.Printf("\n%s summary written to %s\n", outputFormat, mdPath)
 	fmt.Printf("Files processed (new summaries): %d\n", processed)
 	fmt.Printf("Files skipped (already summarized): %d\n", skipped)
 	fmt.Printf("Time elapsed: %s\n", elapsed.Round(time.Second))
@@ -657,6 +640,7 @@ var dryRun bool
 var concurrency int
 var verbose bool
 var outputFormat string
+var provider string
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -669,6 +653,7 @@ func init() {
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
 	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, or html")
+	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default) or openai")
 }
 
 // Execute runs the root Cobra command.

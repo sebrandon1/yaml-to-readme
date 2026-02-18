@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A CLI tool to recursively summarize YAML files in a directory using a local Ollama model, outputting results to a structured markdown file.
+A CLI tool to recursively summarize YAML files in a directory using a local LLM (Ollama or OpenAI-compatible), outputting results to a structured markdown, JSON, or HTML file.
 
 ## Common Commands
 
@@ -21,10 +21,16 @@ This produces a binary named `readmebuilder` in the project directory.
 ```
 
 Available flags:
-- `--model` - Specify Ollama model (default: llama3.2:latest)
+- `--provider` - LLM provider: ollama (default) or openai
+- `--model` - Specify LLM model (default: llama3.2:latest)
 - `--regenerate` - Force regeneration of summaries
 - `--localcache` - Use local cache for summaries
 - `--include-hidden-directories` - Include hidden directories in scan
+- `--format` - Output format: markdown (default), json, or html
+- `--output` / `-o` - Output filename
+- `--concurrency` / `-j` - Number of concurrent workers
+- `--dry-run` - Preview files without calling the LLM
+- `--verbose` / `-v` - Enable debug logging
 
 ### Test
 ```bash
@@ -50,15 +56,19 @@ make info              # Show build info
 
 - **`main.go`** - Application entry point
 - **`cmd/`** - CLI command implementations using Cobra
-  - `root.go` - Main CLI logic and YAML processing
-  - `ollama_client.go` - Ollama API client interface
-  - `mock_ollama_client.go` - Mock client for testing
+  - `root.go` - Main CLI logic, YAML processing, output writers
+  - `provider.go` - `LLMProvider` interface definition
+  - `provider_ollama.go` - Ollama provider implementation
+  - `provider_openai.go` - OpenAI-compatible provider implementation
+  - `provider_mock.go` - Mock provider for testing
+  - `ollama_client.go` - Low-level Ollama API client wrapper
   - `root_test.go` - Unit tests
   - `integration_test.go` - Integration tests
 
 ## Dependencies
 
-- [Ollama](https://ollama.com/) must be installed and running locally
+- **Ollama** (default provider): [Ollama](https://ollama.com/) must be installed and running locally
+- **OpenAI** (optional provider): Requires `OPENAI_API_KEY` env var; set `OPENAI_BASE_URL` for custom endpoints
 - Default model: `llama3.2:latest` (can override with `--model` flag)
 - Go 1.25+
 
