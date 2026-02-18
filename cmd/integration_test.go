@@ -334,8 +334,8 @@ func TestIntegrationLocalCache(t *testing.T) {
 	assert.NoError(t, os.MkdirAll(subDir, 0755))
 
 	testFiles := map[string]string{
-		filepath.Join(tmpDir, "root.yaml"):        "apiVersion: v1\nkind: ConfigMap",
-		filepath.Join(subDir, "deployment.yaml"):   "apiVersion: apps/v1\nkind: Deployment",
+		filepath.Join(tmpDir, "root.yaml"):       "apiVersion: v1\nkind: ConfigMap",
+		filepath.Join(subDir, "deployment.yaml"): "apiVersion: apps/v1\nkind: Deployment",
 	}
 
 	for filePath, content := range testFiles {

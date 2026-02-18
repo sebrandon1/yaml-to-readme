@@ -64,4 +64,3 @@ func (m *MockOllamaClient) List(ctx context.Context) (*ollama.ListResponse, erro
 		Models: models,
 	}, nil
 }
-

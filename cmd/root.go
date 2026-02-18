@@ -19,7 +19,7 @@ const (
 	DefaultModelName        = "llama3.2:latest"
 	DefaultCacheDirName     = ".yaml_summary_cache"
 	DefaultMarkdownFileName = "yaml_details.md"
-	MarkdownHeader      = `# YAML File Details
+	MarkdownHeader          = `# YAML File Details
 
 This document provides an overview of all YAML files in the repository, organized by directory, with a brief description of what each file does or configures. Use this as a reference for understanding the purpose of each manifest or configuration file.
 

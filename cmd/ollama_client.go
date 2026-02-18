@@ -36,4 +36,3 @@ func (r *RealOllamaClient) Chat(ctx context.Context, req *ollama.ChatRequest, fn
 func (r *RealOllamaClient) List(ctx context.Context) (*ollama.ListResponse, error) {
 	return r.client.List(ctx)
 }
-

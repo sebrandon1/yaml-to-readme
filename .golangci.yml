@@ -1,0 +1,39 @@
+version: "2"
+
+linters:
+  enable:
+    - copyloopvar
+    - errcheck
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    gosec:
+      excludes:
+        # G301: Expect directory permissions to be 0750 or less
+        # G304: Potential file inclusion via variable
+        # G306: Expect WriteFile permissions to be 0600 or less
+        # G703: Path traversal via taint analysis
+        # These are false positives for a CLI tool whose purpose is to
+        # read arbitrary file paths and create user-readable output files.
+        - G301
+        - G304
+        - G306
+        - G703
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+run:
+  timeout: 5m
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
