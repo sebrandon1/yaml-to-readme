@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -706,4 +707,86 @@ func TestIntegrationRunSummarizeYamlWithClientRegenerate(t *testing.T) {
 	content, err = os.ReadFile(mdPath)
 	assert.NoError(t, err)
 	assert.Contains(t, string(content), "Regenerated summary")
+}
+
+// TestIntegrationJSONOutputFormat tests the --format json flag.
+func TestIntegrationJSONOutputFormat(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_json_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	origFormat := outputFormat
+	defer func() {
+		outputFormat = origFormat
+	}()
+	outputFormat = "json"
+
+	subDir := filepath.Join(tmpDir, "configs")
+	assert.NoError(t, os.MkdirAll(subDir, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "app.yaml"), []byte("test: app"), 0644))
+
+	mockClient := NewMockOllamaClient()
+	mockClient.DefaultResponse = "Application config file."
+
+	yamlFiles, err := findYAMLFiles(tmpDir, false)
+	assert.NoError(t, err)
+
+	summaries, _, _ := processYAMLFiles(yamlFiles, tmpDir, make(map[string]string), mockClient, false)
+	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
+	assert.NoError(t, writeSummary(tmpDir, grouped))
+
+	outPath := filepath.Join(tmpDir, markdownFileName)
+	content, err := os.ReadFile(outPath)
+	assert.NoError(t, err)
+
+	var result JSONOutput
+	assert.NoError(t, json.Unmarshal(content, &result))
+	assert.Equal(t, tmpDir, result.BaseDirectory)
+	assert.Equal(t, ModelName, result.Model)
+	assert.NotEmpty(t, result.GeneratedAt)
+	assert.Contains(t, result.Directories, "configs/")
+	assert.Len(t, result.Directories["configs/"], 1)
+	assert.Equal(t, "app.yaml", result.Directories["configs/"][0].File)
+	assert.Contains(t, result.Directories["configs/"][0].Summary, "Application config file")
+}
+
+// TestIntegrationHTMLOutputFormat tests the --format html flag.
+func TestIntegrationHTMLOutputFormat(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_html_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	origFormat := outputFormat
+	defer func() {
+		outputFormat = origFormat
+	}()
+	outputFormat = "html"
+
+	subDir := filepath.Join(tmpDir, "deploy")
+	assert.NoError(t, os.MkdirAll(subDir, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "service.yaml"), []byte("test: svc"), 0644))
+
+	mockClient := NewMockOllamaClient()
+	mockClient.DefaultResponse = "Service deployment config."
+
+	yamlFiles, err := findYAMLFiles(tmpDir, false)
+	assert.NoError(t, err)
+
+	summaries, _, _ := processYAMLFiles(yamlFiles, tmpDir, make(map[string]string), mockClient, false)
+	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
+	assert.NoError(t, writeSummary(tmpDir, grouped))
+
+	outPath := filepath.Join(tmpDir, markdownFileName)
+	content, err := os.ReadFile(outPath)
+	assert.NoError(t, err)
+	htmlContent := string(content)
+	assert.Contains(t, htmlContent, "<!DOCTYPE html>")
+	assert.Contains(t, htmlContent, "<title>YAML File Details</title>")
+	assert.Contains(t, htmlContent, "service.yaml")
+	assert.Contains(t, htmlContent, "Service deployment config")
+	assert.Contains(t, htmlContent, "deploy/")
 }

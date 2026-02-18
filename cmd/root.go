@@ -3,7 +3,9 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -215,6 +217,164 @@ func writeMarkdownSummary(baseDir string, grouped map[string][][2]string) error 
 		}
 	}
 	return nil
+}
+
+// JSONOutput represents the structured JSON output format.
+type JSONOutput struct {
+	BaseDirectory string                     `json:"base_directory"`
+	GeneratedAt   string                     `json:"generated_at"`
+	Model         string                     `json:"model"`
+	Directories   map[string][]JSONFileEntry `json:"directories"`
+}
+
+// JSONFileEntry represents a single file entry in the JSON output.
+type JSONFileEntry struct {
+	File    string `json:"file"`
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
+}
+
+// writeJSONSummary writes the grouped summaries as a JSON file.
+func writeJSONSummary(baseDir string, grouped map[string][][2]string) error {
+	output := JSONOutput{
+		BaseDirectory: baseDir,
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
+		Model:         ModelName,
+		Directories:   make(map[string][]JSONFileEntry),
+	}
+
+	dirs := make([]string, 0, len(grouped))
+	for dir := range grouped {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	for _, dir := range dirs {
+		files := grouped[dir]
+		sortedFiles := make([][2]string, len(files))
+		copy(sortedFiles, files)
+		sort.Slice(sortedFiles, func(i, j int) bool {
+			return sortedFiles[i][0] < sortedFiles[j][0]
+		})
+		dirKey := dir + "/"
+		for _, entry := range sortedFiles {
+			output.Directories[dirKey] = append(output.Directories[dirKey], JSONFileEntry{
+				File:    entry[0],
+				Path:    filepath.Join(dir, entry[0]),
+				Summary: entry[1],
+			})
+		}
+	}
+
+	outPath := filepath.Join(baseDir, markdownFileName)
+	data, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	return os.WriteFile(outPath, data, 0o644)
+}
+
+const htmlTemplate = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YAML File Details</title>
+<style>
+body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #333; }
+h1 { border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
+h2 { color: #555; margin-top: 2rem; }
+ul { list-style: none; padding-left: 0; }
+li { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; }
+a { color: #0366d6; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.summary { color: #666; }
+.meta { color: #999; font-size: 0.85rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<h1>YAML File Details</h1>
+<p>Overview of all YAML files, organized by directory.</p>
+{{range .Dirs}}<h2><a href="../{{.Name}}/">{{.Name}}/</a></h2>
+<ul>
+{{range .Files}}<li><a href="../{{.Path}}">{{.File}}</a>: <span class="summary">{{.Summary}}</span></li>
+{{end}}</ul>
+{{end}}<p class="meta">Generated at {{.GeneratedAt}} using model {{.Model}}</p>
+</body>
+</html>
+`
+
+type htmlData struct {
+	Dirs        []htmlDir
+	GeneratedAt string
+	Model       string
+}
+
+type htmlDir struct {
+	Name  string
+	Files []JSONFileEntry
+}
+
+// writeHTMLSummary writes the grouped summaries as an HTML file.
+func writeHTMLSummary(baseDir string, grouped map[string][][2]string) error {
+	tmpl, err := template.New("html").Parse(htmlTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse HTML template: %w", err)
+	}
+
+	dirs := make([]string, 0, len(grouped))
+	for dir := range grouped {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	var data htmlData
+	data.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
+	data.Model = ModelName
+
+	for _, dir := range dirs {
+		files := grouped[dir]
+		sortedFiles := make([][2]string, len(files))
+		copy(sortedFiles, files)
+		sort.Slice(sortedFiles, func(i, j int) bool {
+			return sortedFiles[i][0] < sortedFiles[j][0]
+		})
+		hd := htmlDir{Name: dir}
+		for _, entry := range sortedFiles {
+			hd.Files = append(hd.Files, JSONFileEntry{
+				File:    entry[0],
+				Path:    filepath.Join(dir, entry[0]),
+				Summary: entry[1],
+			})
+		}
+		data.Dirs = append(data.Dirs, hd)
+	}
+
+	outPath := filepath.Join(baseDir, markdownFileName)
+	f, err := os.Create(outPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		cerr := f.Close()
+		if cerr != nil {
+			fmt.Fprintf(os.Stderr, "error closing file: %v\n", cerr)
+		}
+	}()
+
+	return tmpl.Execute(f, data)
+}
+
+// writeSummary dispatches to the appropriate writer based on the outputFormat flag.
+func writeSummary(baseDir string, grouped map[string][][2]string) error {
+	switch outputFormat {
+	case "json":
+		return writeJSONSummary(baseDir, grouped)
+	case "html":
+		return writeHTMLSummary(baseDir, grouped)
+	default:
+		return writeMarkdownSummary(baseDir, grouped)
+	}
 }
 
 // progressBar displays a simple progress bar in the terminal.
@@ -470,8 +630,8 @@ func runSummarizeYamlWithClient(dir string, client OllamaClient) error {
 	summaries, processed, skipped := processYAMLFiles(yamlFiles, dir, existingSummaries, client, regenerate)
 	elapsed := time.Since(start)
 	grouped := groupSummariesByDir(yamlFiles, summaries, dir)
-	if err := writeMarkdownSummary(dir, grouped); err != nil {
-		return fmt.Errorf("failed to write markdown: %w", err)
+	if err := writeSummary(dir, grouped); err != nil {
+		return fmt.Errorf("failed to write output: %w", err)
 	}
 	fmt.Printf("\nMarkdown summary written to %s\n", mdPath)
 	fmt.Printf("Files processed (new summaries): %d\n", processed)
@@ -496,6 +656,7 @@ var includeHidden bool
 var dryRun bool
 var concurrency int
 var verbose bool
+var outputFormat string
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -507,6 +668,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview which YAML files would be processed without calling the LLM")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
+	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, or html")
 }
 
 // Execute runs the root Cobra command.

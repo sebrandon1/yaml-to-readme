@@ -52,6 +52,12 @@ This will produce a binary named `readmebuilder` in the project directory.
 
 # Process files with 4 concurrent workers
 ./readmebuilder --concurrency 4 ./my-yaml-repo
+
+# Output summaries as JSON
+./readmebuilder --format json --output summaries.json ./my-yaml-repo
+
+# Output summaries as HTML
+./readmebuilder --format html --output summaries.html ./my-yaml-repo
 ```
 
 This will:
@@ -79,12 +85,15 @@ This will:
   Preview which YAML files would be processed without calling the LLM. Shows file counts and lists files that would be summarized.
 - `--concurrency`, `-j`
   Number of concurrent workers for processing YAML files (default: `1`). Example: `--concurrency 4`.
+- `--format`
+  Output format: `markdown` (default), `json`, or `html`. JSON outputs a structured array of file entries. HTML generates a styled, self-contained page. Example: `--format json`.
 - `--verbose`, `-v`
   Enable verbose debug logging to stderr. Useful for troubleshooting file discovery and processing decisions.
 
 ### Output
-- The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.
-- Each entry includes a link to the YAML file and a concise, high-level summary (max two sentences).
+- **Markdown** (default): Creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory. Each entry includes a link to the YAML file and a concise, high-level summary.
+- **JSON**: Outputs a structured JSON array with directory, file path, and summary fields.
+- **HTML**: Generates a self-contained HTML page with styled summary cards grouped by directory.
 
 ### Notes
 - If the required Ollama model is not available, the tool will exit with an error.
