@@ -46,6 +46,9 @@ This will produce a binary named `readmebuilder` in the project directory.
 
 # Use a custom cache directory with localcache
 ./readmebuilder --localcache --cache-dir .my_cache ./my-yaml-repo
+
+# Preview which files would be processed without calling the LLM
+./readmebuilder --dry-run ./my-yaml-repo
 ```
 
 This will:
@@ -69,6 +72,8 @@ This will:
   Output markdown filename (default: `yaml_details.md`). Example: `--output summary.md`.
 - `--cache-dir`
   Cache directory name for `--localcache` (default: `.yaml_summary_cache`). Example: `--cache-dir .my_cache`.
+- `--dry-run`
+  Preview which YAML files would be processed without calling the LLM. Shows file counts and lists files that would be summarized.
 
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.

@@ -334,8 +334,47 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 	return summaries, processed, skipped
 }
 
+// runDryRun prints which YAML files would be processed without calling the LLM.
+func runDryRun(dir string) error {
+	yamlFiles, err := findYAMLFiles(dir, includeHidden)
+	if err != nil {
+		return err
+	}
+	mdPath := filepath.Join(dir, markdownFileName)
+	existingSummaries := parseExistingSummaries(mdPath)
+
+	newFiles := 0
+	existingFiles := 0
+	var newList []string
+	for _, file := range yamlFiles {
+		rel, _ := filepath.Rel(dir, file)
+		rel = filepath.ToSlash(rel)
+		if summary, ok := existingSummaries[rel]; ok && summary != "" {
+			existingFiles++
+		} else {
+			newFiles++
+			newList = append(newList, rel)
+		}
+	}
+
+	fmt.Printf("Dry run: %d YAML files found in %s\n", len(yamlFiles), dir)
+	fmt.Printf("  New (would summarize): %d\n", newFiles)
+	fmt.Printf("  Existing (would skip): %d\n", existingFiles)
+	if len(newList) > 0 {
+		fmt.Println("\nFiles to summarize:")
+		for _, f := range newList {
+			fmt.Printf("  %s\n", f)
+		}
+	}
+	return nil
+}
+
 // runSummarizeYaml is the main logic for the summarize-yaml command.
 func runSummarizeYaml(dir string) error {
+	if dryRun {
+		return runDryRun(dir)
+	}
+
 	yamlFiles, err := findYAMLFiles(dir, includeHidden)
 	if err != nil {
 		return err
@@ -391,6 +430,7 @@ var rootCmd = &cobra.Command{
 var regenerate bool
 var localCache bool
 var includeHidden bool
+var dryRun bool
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -399,6 +439,7 @@ func init() {
 	rootCmd.Flags().StringVar(&ModelName, "model", DefaultModelName, "Ollama model to use (default: "+DefaultModelName+")")
 	rootCmd.Flags().StringVarP(&markdownFileName, "output", "o", DefaultMarkdownFileName, "Output markdown filename (default: "+DefaultMarkdownFileName+")")
 	rootCmd.Flags().StringVar(&cacheDirName, "cache-dir", DefaultCacheDirName, "Cache directory name for --localcache (default: "+DefaultCacheDirName+")")
+	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview which YAML files would be processed without calling the LLM")
 }
 
 // Execute runs the root Cobra command.
