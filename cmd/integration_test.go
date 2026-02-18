@@ -309,6 +309,96 @@ func TestIntegrationEmptyDirectory(t *testing.T) {
 	assert.Equal(t, 0, skipped)
 }
 
+// TestIntegrationLocalCache tests the --localcache flag end-to-end.
+func TestIntegrationLocalCache(t *testing.T) {
+	// Save and restore working directory and localCache flag
+	origDir, err := os.Getwd()
+	assert.NoError(t, err)
+	origLocalCache := localCache
+	defer func() {
+		_ = os.Chdir(origDir)
+		localCache = origLocalCache
+	}()
+
+	// Create a temp directory to act as both working directory and project root
+	tmpDir, err := os.MkdirTemp("", "integration_test_localcache_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	assert.NoError(t, os.Chdir(tmpDir))
+
+	// Create test directory structure with YAML files
+	subDir := filepath.Join(tmpDir, "manifests")
+	assert.NoError(t, os.MkdirAll(subDir, 0755))
+
+	testFiles := map[string]string{
+		filepath.Join(tmpDir, "root.yaml"):        "apiVersion: v1\nkind: ConfigMap",
+		filepath.Join(subDir, "deployment.yaml"):   "apiVersion: apps/v1\nkind: Deployment",
+	}
+
+	for filePath, content := range testFiles {
+		assert.NoError(t, os.WriteFile(filePath, []byte(content), 0644))
+	}
+
+	mockClient := NewMockOllamaClient()
+	mockClient.MockResponses = map[string]string{
+		"kind: ConfigMap":  "This is a ConfigMap for app config.",
+		"kind: Deployment": "This is a Deployment for the web app.",
+	}
+
+	// Enable localcache flag
+	localCache = true
+
+	// Find and process YAML files
+	yamlFiles, err := findYAMLFiles(tmpDir, false)
+	assert.NoError(t, err)
+	assert.Len(t, yamlFiles, 2)
+
+	summaries, processed, skipped := processYAMLFiles(yamlFiles, tmpDir, make(map[string]string), mockClient, false)
+	assert.Equal(t, 2, processed)
+	assert.Equal(t, 0, skipped)
+	assert.Len(t, summaries, 2)
+
+	// Verify cache directory was created
+	cacheDir := filepath.Join(tmpDir, DefaultCacheDirName)
+	info, err := os.Stat(cacheDir)
+	assert.NoError(t, err, "cache directory should exist")
+	assert.True(t, info.IsDir(), "cache path should be a directory")
+
+	// Verify individual cache files exist
+	entries, err := os.ReadDir(cacheDir)
+	assert.NoError(t, err)
+	assert.Len(t, entries, 2, "should have 2 cache files")
+
+	// Verify cache file names use underscore separator for subdirectory paths
+	cacheFileNames := make([]string, len(entries))
+	for i, e := range entries {
+		cacheFileNames[i] = e.Name()
+	}
+	assert.Contains(t, cacheFileNames, "root.yaml.md")
+	assert.Contains(t, cacheFileNames, "manifests_deployment.yaml.md")
+
+	// Verify cache file contents
+	rootCache, err := os.ReadFile(filepath.Join(cacheDir, "root.yaml.md"))
+	assert.NoError(t, err)
+	assert.Contains(t, string(rootCache), "ConfigMap for app config")
+
+	deployCache, err := os.ReadFile(filepath.Join(cacheDir, "manifests_deployment.yaml.md"))
+	assert.NoError(t, err)
+	assert.Contains(t, string(deployCache), "Deployment for the web app")
+
+	// Write markdown and verify it also works alongside cache
+	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
+	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
+
+	mdPath := filepath.Join(tmpDir, MarkdownFileName)
+	mdContent, err := os.ReadFile(mdPath)
+	assert.NoError(t, err)
+	assert.Contains(t, string(mdContent), "# YAML File Details")
+}
+
 // TestIntegrationModelAvailability tests the model availability check.
 func TestIntegrationModelAvailability(t *testing.T) {
 	mockClient := NewMockOllamaClient()
