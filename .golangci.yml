@@ -19,12 +19,15 @@ linters:
         # G304: Potential file inclusion via variable
         # G306: Expect WriteFile permissions to be 0600 or less
         # G703: Path traversal via taint analysis
+        # G704: SSRF via taint analysis
         # These are false positives for a CLI tool whose purpose is to
-        # read arbitrary file paths and create user-readable output files.
+        # read arbitrary file paths, create user-readable output files,
+        # and connect to user-configured LLM API endpoints.
         - G301
         - G304
         - G306
         - G703
+        - G704
 
 formatters:
   enable:
