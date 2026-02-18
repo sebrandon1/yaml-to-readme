@@ -79,6 +79,8 @@ This will:
   Preview which YAML files would be processed without calling the LLM. Shows file counts and lists files that would be summarized.
 - `--concurrency`, `-j`
   Number of concurrent workers for processing YAML files (default: `1`). Example: `--concurrency 4`.
+- `--verbose`, `-v`
+  Enable verbose debug logging to stderr. Useful for troubleshooting file discovery and processing decisions.
 
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.
