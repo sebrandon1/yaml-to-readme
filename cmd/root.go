@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	ollama "github.com/ollama/ollama/api"
@@ -305,33 +307,74 @@ func writeIndividualSummary(baseDir, filePath, summary string) error {
 // processYAMLFiles processes YAML files, generating summaries if needed, and returns the summaries map and counters.
 func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[string]string, client OllamaClient, forceRegenerate bool) (map[string]string, int, int) {
 	summaries := make(map[string]string)
-	skipped := 0
-	processed := 0
 	total := len(yamlFiles)
-	for i, file := range yamlFiles {
+	skipped := 0
+
+	// First pass: identify which files need processing and collect existing summaries
+	var toProcess []string
+	for _, file := range yamlFiles {
 		rel, _ := filepath.Rel(dir, file)
 		rel = filepath.ToSlash(rel)
 		if !forceRegenerate {
 			if summary, ok := existingSummaries[rel]; ok && summary != "" {
 				summaries[file] = summary
 				skipped++
-				progressBar(i+1, total)
 				continue
 			}
 		}
-		progressBar(i+1, total)
-		summary, err := summarizeYAMLFile(context.Background(), client, file)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-		summaries[file] = summary
-		if localCache {
-			_ = writeIndividualSummary(dir, file, summary) // Write to cache if flag is set
-		}
-		processed++
+		toProcess = append(toProcess, file)
 	}
-	return summaries, processed, skipped
+
+	// Determine effective concurrency
+	workers := concurrency
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > len(toProcess) && len(toProcess) > 0 {
+		workers = len(toProcess)
+	}
+
+	// Second pass: process new files concurrently
+	var mu sync.Mutex
+	var completed atomic.Int64
+	completed.Store(int64(skipped))
+	var processed atomic.Int64
+
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+
+	for _, file := range toProcess {
+		wg.Add(1)
+		sem <- struct{}{} // Acquire semaphore slot
+		go func(f string) {
+			defer wg.Done()
+			defer func() { <-sem }() // Release semaphore slot
+
+			summary, err := summarizeYAMLFile(context.Background(), client, f)
+			if err != nil {
+				fmt.Println(err)
+				completed.Add(1)
+				progressBar(int(completed.Load()), total)
+				return
+			}
+
+			mu.Lock()
+			summaries[f] = summary
+			mu.Unlock()
+
+			if localCache {
+				_ = writeIndividualSummary(dir, f, summary)
+			}
+
+			processed.Add(1)
+			completed.Add(1)
+			progressBar(int(completed.Load()), total)
+		}(file)
+	}
+
+	wg.Wait()
+
+	return summaries, int(processed.Load()), skipped
 }
 
 // runDryRun prints which YAML files would be processed without calling the LLM.
@@ -431,6 +474,7 @@ var regenerate bool
 var localCache bool
 var includeHidden bool
 var dryRun bool
+var concurrency int
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -440,6 +484,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&markdownFileName, "output", "o", DefaultMarkdownFileName, "Output markdown filename (default: "+DefaultMarkdownFileName+")")
 	rootCmd.Flags().StringVar(&cacheDirName, "cache-dir", DefaultCacheDirName, "Cache directory name for --localcache (default: "+DefaultCacheDirName+")")
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview which YAML files would be processed without calling the LLM")
+	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
 }
 
 // Execute runs the root Cobra command.
