@@ -468,6 +468,55 @@ func TestIntegrationCustomOutputAndCacheDir(t *testing.T) {
 	assert.Len(t, entries, 1)
 }
 
+// TestIntegrationDryRun tests the --dry-run flag.
+func TestIntegrationDryRun(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_dryrun_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	// Create test YAML files
+	subDir := filepath.Join(tmpDir, "configs")
+	assert.NoError(t, os.MkdirAll(subDir, 0755))
+	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "root.yaml"), []byte("test: root"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "app.yaml"), []byte("test: app"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "db.yaml"), []byte("test: db"), 0644))
+
+	// Save and restore includeHidden
+	origIncludeHidden := includeHidden
+	defer func() {
+		includeHidden = origIncludeHidden
+	}()
+	includeHidden = false
+
+	// Run dry-run with no existing summaries (all new)
+	err = runDryRun(tmpDir)
+	assert.NoError(t, err)
+
+	// Verify no markdown file was created (dry-run should not write anything)
+	_, err = os.Stat(filepath.Join(tmpDir, markdownFileName))
+	assert.True(t, os.IsNotExist(err), "dry-run should not create output file")
+
+	// Now create an existing markdown with one summary, then dry-run again
+	mockClient := NewMockOllamaClient()
+	mockClient.DefaultResponse = "Existing summary."
+
+	yamlFiles, err := findYAMLFiles(tmpDir, false)
+	assert.NoError(t, err)
+	assert.Len(t, yamlFiles, 3)
+
+	// Process only one file to create partial existing summaries
+	singleFile := []string{yamlFiles[0]}
+	summaries, _, _ := processYAMLFiles(singleFile, tmpDir, make(map[string]string), mockClient, false)
+	grouped := groupSummariesByDir(singleFile, summaries, tmpDir)
+	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
+
+	// Dry-run should now show 1 existing, 2 new
+	err = runDryRun(tmpDir)
+	assert.NoError(t, err)
+}
+
 // TestIntegrationModelAvailability tests the model availability check.
 func TestIntegrationModelAvailability(t *testing.T) {
 	mockClient := NewMockOllamaClient()
