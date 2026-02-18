@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+.yaml_summary_cache
+.DS_Store
+coverage
+readmebuilder
+vendor
+*.md
+!go.mod
+!go.sum
+LICENSE
+.golangci.yml
+.gitignore
