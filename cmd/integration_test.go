@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -515,6 +516,62 @@ func TestIntegrationDryRun(t *testing.T) {
 	// Dry-run should now show 1 existing, 2 new
 	err = runDryRun(tmpDir)
 	assert.NoError(t, err)
+}
+
+// TestIntegrationConcurrentProcessing tests the --concurrency flag with multiple workers.
+func TestIntegrationConcurrentProcessing(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "integration_test_concurrent_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	// Save and restore concurrency flag
+	origConcurrency := concurrency
+	defer func() {
+		concurrency = origConcurrency
+	}()
+
+	// Create multiple YAML files
+	for i := 0; i < 10; i++ {
+		filename := filepath.Join(tmpDir, fmt.Sprintf("file%d.yaml", i))
+		content := fmt.Sprintf("apiVersion: v1\nkind: ConfigMap\nname: config-%d", i)
+		assert.NoError(t, os.WriteFile(filename, []byte(content), 0644))
+	}
+
+	mockClient := NewMockOllamaClient()
+	mockClient.DefaultResponse = "This is a concurrent test summary."
+
+	// Process with concurrency=4
+	concurrency = 4
+	yamlFiles, err := findYAMLFiles(tmpDir, false)
+	assert.NoError(t, err)
+	assert.Len(t, yamlFiles, 10)
+
+	summaries, processed, skipped := processYAMLFiles(yamlFiles, tmpDir, make(map[string]string), mockClient, false)
+	assert.Equal(t, 10, processed, "Should process all 10 files")
+	assert.Equal(t, 0, skipped)
+	assert.Len(t, summaries, 10, "Should have 10 summaries")
+
+	// Verify all summaries are populated
+	for _, file := range yamlFiles {
+		assert.NotEmpty(t, summaries[file], "summary should not be empty for %s", file)
+	}
+
+	// Verify output is deterministic by writing and checking markdown
+	grouped := groupSummariesByDir(yamlFiles, summaries, tmpDir)
+	assert.NoError(t, writeMarkdownSummary(tmpDir, grouped))
+
+	mdPath := filepath.Join(tmpDir, markdownFileName)
+	content, err := os.ReadFile(mdPath)
+	assert.NoError(t, err)
+	mdContent := string(content)
+	assert.Contains(t, mdContent, "# YAML File Details")
+
+	// All 10 files should be in the output
+	for i := 0; i < 10; i++ {
+		assert.Contains(t, mdContent, fmt.Sprintf("file%d.yaml", i))
+	}
 }
 
 // TestIntegrationModelAvailability tests the model availability check.

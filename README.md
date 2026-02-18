@@ -49,6 +49,9 @@ This will produce a binary named `readmebuilder` in the project directory.
 
 # Preview which files would be processed without calling the LLM
 ./readmebuilder --dry-run ./my-yaml-repo
+
+# Process files with 4 concurrent workers
+./readmebuilder --concurrency 4 ./my-yaml-repo
 ```
 
 This will:
@@ -74,6 +77,8 @@ This will:
   Cache directory name for `--localcache` (default: `.yaml_summary_cache`). Example: `--cache-dir .my_cache`.
 - `--dry-run`
   Preview which YAML files would be processed without calling the LLM. Shows file counts and lists files that would be summarized.
+- `--concurrency`, `-j`
+  Number of concurrent workers for processing YAML files (default: `1`). Example: `--concurrency 4`.
 
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.
