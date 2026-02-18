@@ -16,9 +16,9 @@ import (
 
 // Keeping a collection of constants for future use.
 const (
-	DefaultModelName    = "llama3.2:latest"
-	DefaultCacheDirName = ".yaml_summary_cache"
-	MarkdownFileName    = "yaml_details.md"
+	DefaultModelName        = "llama3.2:latest"
+	DefaultCacheDirName     = ".yaml_summary_cache"
+	DefaultMarkdownFileName = "yaml_details.md"
 	MarkdownHeader      = `# YAML File Details
 
 This document provides an overview of all YAML files in the repository, organized by directory, with a brief description of what each file does or configures. Use this as a reference for understanding the purpose of each manifest or configuration file.
@@ -41,6 +41,12 @@ This document provides an overview of all YAML files in the repository, organize
 
 // ModelName is configurable via the --model flag and defaults to DefaultModelName.
 var ModelName string = DefaultModelName
+
+// markdownFileName is configurable via the --output flag and defaults to DefaultMarkdownFileName.
+var markdownFileName string = DefaultMarkdownFileName
+
+// cacheDirName is configurable via the --cache-dir flag and defaults to DefaultCacheDirName.
+var cacheDirName string = DefaultCacheDirName
 
 // findYAMLFiles recursively finds all YAML files under the given directory path.
 func findYAMLFiles(dir string, includeHidden bool) ([]string, error) {
@@ -154,7 +160,7 @@ func groupSummariesByDir(yamlFiles []string, summaries map[string]string, baseDi
 
 // writeMarkdownSummary writes the grouped summaries to a markdown file in the base directory.
 func writeMarkdownSummary(baseDir string, grouped map[string][][2]string) error {
-	mdPath := filepath.Join(baseDir, MarkdownFileName)
+	mdPath := filepath.Join(baseDir, markdownFileName)
 	f, err := os.Create(mdPath)
 	if err != nil {
 		return err
@@ -270,7 +276,7 @@ func writeIndividualSummary(baseDir, filePath, summary string) error {
 	if err != nil {
 		return err
 	}
-	cacheDir := filepath.Join(repoRoot, DefaultCacheDirName)
+	cacheDir := filepath.Join(repoRoot, cacheDirName)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return err
 	}
@@ -334,7 +340,7 @@ func runSummarizeYaml(dir string) error {
 	if err != nil {
 		return err
 	}
-	mdPath := filepath.Join(dir, MarkdownFileName)
+	mdPath := filepath.Join(dir, markdownFileName)
 	existingSummaries := parseExistingSummaries(mdPath)
 	realClient, err := NewRealOllamaClient()
 	if err != nil {
@@ -391,6 +397,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&localCache, "localcache", false, "Write individual summaries to .yaml_summary_cache in the repo root. Mostly used for debugging or local development.")
 	rootCmd.Flags().BoolVar(&includeHidden, "include-hidden-directories", false, "Include hidden directories (starting with '.') when searching for YAML files")
 	rootCmd.Flags().StringVar(&ModelName, "model", DefaultModelName, "Ollama model to use (default: "+DefaultModelName+")")
+	rootCmd.Flags().StringVarP(&markdownFileName, "output", "o", DefaultMarkdownFileName, "Output markdown filename (default: "+DefaultMarkdownFileName+")")
+	rootCmd.Flags().StringVar(&cacheDirName, "cache-dir", DefaultCacheDirName, "Cache directory name for --localcache (default: "+DefaultCacheDirName+")")
 }
 
 // Execute runs the root Cobra command.

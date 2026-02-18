@@ -40,6 +40,12 @@ This will produce a binary named `readmebuilder` in the project directory.
 
 # Specify a different Ollama model without recompiling
 ./readmebuilder --model mistral:latest ./my-yaml-repo
+
+# Write output to a custom filename
+./readmebuilder --output summary.md ./my-yaml-repo
+
+# Use a custom cache directory with localcache
+./readmebuilder --localcache --cache-dir .my_cache ./my-yaml-repo
 ```
 
 This will:
@@ -57,8 +63,12 @@ This will:
   Write individual summaries to `.yaml_summary_cache` in the repo root for each YAML file processed.
 - `--include-hidden-directories`  
   Include hidden directories (starting with `.`) when searching for YAML files. By default, hidden directories like `.git`, `.vscode`, etc. are skipped for performance.
-- `--model`  
+- `--model`
   Ollama model to use (default: `llama3.2:latest`). Example: `--model mistral:latest`.
+- `--output`, `-o`
+  Output markdown filename (default: `yaml_details.md`). Example: `--output summary.md`.
+- `--cache-dir`
+  Cache directory name for `--localcache` (default: `.yaml_summary_cache`). Example: `--cache-dir .my_cache`.
 
 ### Output
 - The tool creates or updates a `yaml_details.md` file in the target directory, grouping summaries by subdirectory.
