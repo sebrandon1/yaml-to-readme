@@ -83,6 +83,29 @@ This will:
 - If the required Ollama model is not available, the tool will exit with an error.
 - Summaries are strictly limited to two sentences, with no lists, markdown, or code in the output.
 
+### Docker
+
+Build the container image:
+
+```bash
+docker build -t readmebuilder .
+```
+
+Run against a local directory (requires Ollama running on the host):
+
+```bash
+# On Linux (host networking)
+docker run --rm --network host \
+  -v /path/to/yaml-repo:/data \
+  readmebuilder /data
+
+# On macOS/Windows (use host.docker.internal)
+docker run --rm \
+  -e OLLAMA_HOST=http://host.docker.internal:11434 \
+  -v /path/to/yaml-repo:/data \
+  readmebuilder /data
+```
+
 ### Makefile Targets
 - `make vet`   — Run `go vet` on the codebase.
 - `make lint`  — Run `golangci-lint` (installs if missing).
