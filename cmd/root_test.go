@@ -92,6 +92,101 @@ func TestParseSummaryLines(t *testing.T) {
 	}
 }
 
+func TestWriteIndividualSummary(t *testing.T) {
+	// Save and restore working directory since writeIndividualSummary uses os.Getwd()
+	origDir, err := os.Getwd()
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.Chdir(origDir)
+	}()
+
+	// Create a temp directory to act as the working directory (repo root)
+	repoRoot, err := os.MkdirTemp("", "test_write_summary_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(repoRoot)
+	}()
+
+	assert.NoError(t, os.Chdir(repoRoot))
+
+	// Create a baseDir with a YAML file
+	baseDir := filepath.Join(repoRoot, "project")
+	subDir := filepath.Join(baseDir, "subdir")
+	assert.NoError(t, os.MkdirAll(subDir, 0755))
+
+	testCases := []struct {
+		name          string
+		filePath      string
+		summary       string
+		expectedCache string
+	}{
+		{
+			name:          "file in subdirectory",
+			filePath:      filepath.Join(subDir, "config.yaml"),
+			summary:       "This file configures the application.",
+			expectedCache: "subdir_config.yaml.md",
+		},
+		{
+			name:          "file in base directory",
+			filePath:      filepath.Join(baseDir, "root.yaml"),
+			summary:       "Root level configuration file.",
+			expectedCache: "root.yaml.md",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := writeIndividualSummary(baseDir, tc.filePath, tc.summary)
+			assert.NoError(t, err)
+
+			// Verify cache directory was created
+			cacheDir := filepath.Join(repoRoot, DefaultCacheDirName)
+			_, err = os.Stat(cacheDir)
+			assert.NoError(t, err, "cache directory should exist")
+
+			// Verify cache file exists with correct name
+			cacheFilePath := filepath.Join(cacheDir, tc.expectedCache)
+			content, err := os.ReadFile(cacheFilePath)
+			assert.NoError(t, err, "cache file should exist")
+			assert.Equal(t, tc.summary, string(content), "cache file content should match summary")
+		})
+	}
+}
+
+func TestWriteIndividualSummaryFallback(t *testing.T) {
+	// Test the fallback behavior when filePath is not under baseDir
+	origDir, err := os.Getwd()
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.Chdir(origDir)
+	}()
+
+	repoRoot, err := os.MkdirTemp("", "test_write_summary_fallback_*")
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(repoRoot)
+	}()
+
+	assert.NoError(t, os.Chdir(repoRoot))
+
+	// Use a filePath that is not under baseDir
+	baseDir := filepath.Join(repoRoot, "project")
+	assert.NoError(t, os.MkdirAll(baseDir, 0755))
+
+	otherDir := filepath.Join(repoRoot, "other")
+	assert.NoError(t, os.MkdirAll(otherDir, 0755))
+
+	err = writeIndividualSummary(baseDir, filepath.Join(otherDir, "external.yaml"), "External summary.")
+	assert.NoError(t, err)
+
+	// Should fall back to base name only
+	cacheDir := filepath.Join(repoRoot, DefaultCacheDirName)
+	cacheFilePath := filepath.Join(cacheDir, "external.yaml.md")
+	content, err := os.ReadFile(cacheFilePath)
+	assert.NoError(t, err, "cache file should exist with fallback name")
+	assert.Equal(t, "External summary.", string(content))
+}
+
 func TestFindYAMLFilesHiddenDirectories(t *testing.T) {
 	// Create temporary directory structure
 	tmpDir, err := os.MkdirTemp("", "test_yaml_finder_*")
