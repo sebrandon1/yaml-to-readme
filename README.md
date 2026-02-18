@@ -4,13 +4,13 @@
 ![Test Incoming Changes](https://github.com/sebrandon1/yaml-to-readme/actions/workflows/pre-main.yml/badge.svg)
 ![Release binaries](https://github.com/sebrandon1/yaml-to-readme/actions/workflows/release-binaries.yaml/badge.svg)
 
-A CLI tool to recursively summarize YAML files in a directory using a local Ollama model, outputting results to a structured markdown file.
+A CLI tool to recursively summarize YAML files in a directory using a local LLM, outputting results to a structured markdown file. Supports Ollama (default) and OpenAI-compatible APIs.
 
 ## How to Use
 
 ### Prerequisites
-- [Ollama](https://ollama.com/) must be installed and running locally.
-- The desired model (default: `llama3.2:latest`) must be available in your local Ollama instance. You can override the model at runtime with `--model`.
+- **Ollama** (default): [Ollama](https://ollama.com/) must be installed and running locally. The desired model (default: `llama3.2:latest`) must be available.
+- **OpenAI** (optional): Set `OPENAI_API_KEY` environment variable. Optionally set `OPENAI_BASE_URL` for compatible endpoints (vLLM, llama.cpp server, Azure OpenAI).
 - Go 1.25+ is required to build from source.
 
 ### Build
@@ -58,6 +58,13 @@ This will produce a binary named `readmebuilder` in the project directory.
 
 # Output summaries as HTML
 ./readmebuilder --format html --output summaries.html ./my-yaml-repo
+
+# Use OpenAI API instead of Ollama
+OPENAI_API_KEY=sk-... ./readmebuilder --provider openai --model gpt-4o-mini ./my-yaml-repo
+
+# Use a custom OpenAI-compatible endpoint (e.g., vLLM, llama.cpp)
+OPENAI_API_KEY=dummy OPENAI_BASE_URL=http://localhost:8000 \
+  ./readmebuilder --provider openai --model my-local-model ./my-yaml-repo
 ```
 
 This will:
@@ -75,8 +82,10 @@ This will:
   Write individual summaries to `.yaml_summary_cache` in the repo root for each YAML file processed.
 - `--include-hidden-directories`  
   Include hidden directories (starting with `.`) when searching for YAML files. By default, hidden directories like `.git`, `.vscode`, etc. are skipped for performance.
+- `--provider`
+  LLM provider: `ollama` (default) or `openai`. The `openai` provider works with any OpenAI-compatible API. Requires `OPENAI_API_KEY` env var; optionally set `OPENAI_BASE_URL` for custom endpoints.
 - `--model`
-  Ollama model to use (default: `llama3.2:latest`). Example: `--model mistral:latest`.
+  LLM model to use (default: `llama3.2:latest`). Example: `--model mistral:latest` (Ollama) or `--model gpt-4o-mini` (OpenAI).
 - `--output`, `-o`
   Output markdown filename (default: `yaml_details.md`). Example: `--output summary.md`.
 - `--cache-dir`
@@ -96,7 +105,7 @@ This will:
 - **HTML**: Generates a self-contained HTML page with styled summary cards grouped by directory.
 
 ### Notes
-- If the required Ollama model is not available, the tool will exit with an error.
+- If the required model is not available in the configured provider, the tool will exit with an error.
 - Summaries are strictly limited to two sentences, with no lists, markdown, or code in the output.
 
 ### Docker

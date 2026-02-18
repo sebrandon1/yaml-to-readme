@@ -48,7 +48,7 @@ func TestIntegrationBasicFlow(t *testing.T) {
 	}
 
 	// Create mock client with specific responses for each file
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.MockResponses = map[string]string{
 		"kind: ConfigMap":   "This YAML file defines a ConfigMap for application configuration. It stores key-value pairs for the application.",
 		"kind: Deployment":  "This YAML file defines a Kubernetes Deployment for the web application. It manages the desired state of application pods.",
@@ -108,7 +108,7 @@ func TestIntegrationRegenerateFlag(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "test.yaml")
 	assert.NoError(t, os.WriteFile(testFile, []byte("test: data"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "First summary."
 
 	// First run: generate summaries
@@ -155,7 +155,7 @@ func TestIntegrationHiddenDirectories(t *testing.T) {
 	assert.NoError(t, os.WriteFile(regularFile, []byte("regular: data"), 0644))
 	assert.NoError(t, os.WriteFile(hiddenFile, []byte("hidden: data"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "Test summary."
 
 	// Without hidden directories
@@ -210,7 +210,7 @@ func TestIntegrationMarkdownFormat(t *testing.T) {
 		assert.NoError(t, os.WriteFile(path, []byte(content), 0644))
 	}
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "Summary for testing."
 
 	yamlFiles, err := findYAMLFiles(tmpDir, false)
@@ -270,7 +270,7 @@ func TestIntegrationSummaryCleaning(t *testing.T) {
 	testFile := filepath.Join(tmpDir, "test.yaml")
 	assert.NoError(t, os.WriteFile(testFile, []byte("test: data"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	// Simulate a response with markdown, lists, and extra sentences
 	mockClient.DefaultResponse = `# Summary
 - This is a bullet point
@@ -300,7 +300,7 @@ func TestIntegrationEmptyDirectory(t *testing.T) {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 
 	yamlFiles, err := findYAMLFiles(tmpDir, false)
 	assert.NoError(t, err)
@@ -344,7 +344,7 @@ func TestIntegrationLocalCache(t *testing.T) {
 		assert.NoError(t, os.WriteFile(filePath, []byte(content), 0644))
 	}
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.MockResponses = map[string]string{
 		"kind: ConfigMap":  "This is a ConfigMap for app config.",
 		"kind: Deployment": "This is a Deployment for the web app.",
@@ -427,7 +427,7 @@ func TestIntegrationCustomOutputAndCacheDir(t *testing.T) {
 	// Create a YAML file
 	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test.yaml"), []byte("test: data"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "Custom output test summary."
 
 	// Set custom output filename and cache dir
@@ -501,7 +501,7 @@ func TestIntegrationDryRun(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "dry-run should not create output file")
 
 	// Now create an existing markdown with one summary, then dry-run again
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "Existing summary."
 
 	yamlFiles, err := findYAMLFiles(tmpDir, false)
@@ -540,7 +540,7 @@ func TestIntegrationConcurrentProcessing(t *testing.T) {
 		assert.NoError(t, os.WriteFile(filename, []byte(content), 0644))
 	}
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "This is a concurrent test summary."
 
 	// Process with concurrency=4
@@ -575,29 +575,21 @@ func TestIntegrationConcurrentProcessing(t *testing.T) {
 	}
 }
 
-// TestIntegrationModelAvailability tests the model availability check.
+// TestIntegrationModelAvailability tests the model availability check via LLMProvider.
 func TestIntegrationModelAvailability(t *testing.T) {
-	mockClient := NewMockOllamaClient()
-	mockClient.AvailableModels = []string{DefaultModelName}
+	mockProvider := NewMockLLMProvider()
+	mockProvider.ModelAvailable = true
 
 	// Test with available model
-	response, err := mockClient.List(context.Background())
+	available, err := mockProvider.Available(context.Background())
 	assert.NoError(t, err)
-	assert.Len(t, response.Models, 1)
-	assert.Equal(t, DefaultModelName, response.Models[0].Name)
+	assert.True(t, available, "Model should be available")
 
 	// Test with unavailable model
-	mockClient.AvailableModels = []string{"other-model"}
-	response, err = mockClient.List(context.Background())
+	mockProvider.ModelAvailable = false
+	available, err = mockProvider.Available(context.Background())
 	assert.NoError(t, err)
-	modelAvailable := false
-	for _, model := range response.Models {
-		if model.Name == DefaultModelName {
-			modelAvailable = true
-			break
-		}
-	}
-	assert.False(t, modelAvailable, "Default model should not be available")
+	assert.False(t, available, "Model should not be available")
 }
 
 // TestIntegrationRunSummarizeYamlWithClient tests the full orchestration flow with a mock client.
@@ -624,15 +616,15 @@ func TestIntegrationRunSummarizeYamlWithClient(t *testing.T) {
 	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "config.yaml"), []byte("apiVersion: v1\nkind: ConfigMap"), 0644))
 	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "deploy.yaml"), []byte("apiVersion: apps/v1\nkind: Deployment"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.MockResponses = map[string]string{
 		"kind: ConfigMap":  "This is a ConfigMap for application settings.",
 		"kind: Deployment": "This is a Deployment for the web service.",
 	}
-	mockClient.AvailableModels = []string{DefaultModelName}
+	mockClient.ModelAvailable = true
 
 	// Run the full orchestration
-	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	err = runSummarizeYamlWithProvider(tmpDir, mockClient)
 	assert.NoError(t, err)
 
 	// Verify output file was created
@@ -657,10 +649,10 @@ func TestIntegrationRunSummarizeYamlWithClientModelUnavailable(t *testing.T) {
 
 	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test.yaml"), []byte("test: data"), 0644))
 
-	mockClient := NewMockOllamaClient()
-	mockClient.AvailableModels = []string{"some-other-model"}
+	mockClient := NewMockLLMProvider()
+	mockClient.ModelAvailable = false
 
-	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	err = runSummarizeYamlWithProvider(tmpDir, mockClient)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not available")
 }
@@ -683,13 +675,13 @@ func TestIntegrationRunSummarizeYamlWithClientRegenerate(t *testing.T) {
 
 	assert.NoError(t, os.WriteFile(filepath.Join(tmpDir, "test.yaml"), []byte("test: data"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "First run summary."
-	mockClient.AvailableModels = []string{DefaultModelName}
+	mockClient.ModelAvailable = true
 
 	// First run
 	regenerate = false
-	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	err = runSummarizeYamlWithProvider(tmpDir, mockClient)
 	assert.NoError(t, err)
 
 	// Verify first summary
@@ -701,7 +693,7 @@ func TestIntegrationRunSummarizeYamlWithClientRegenerate(t *testing.T) {
 	// Second run with regenerate
 	mockClient.DefaultResponse = "Regenerated summary."
 	regenerate = true
-	err = runSummarizeYamlWithClient(tmpDir, mockClient)
+	err = runSummarizeYamlWithProvider(tmpDir, mockClient)
 	assert.NoError(t, err)
 
 	content, err = os.ReadFile(mdPath)
@@ -727,7 +719,7 @@ func TestIntegrationJSONOutputFormat(t *testing.T) {
 	assert.NoError(t, os.MkdirAll(subDir, 0755))
 	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "app.yaml"), []byte("test: app"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "Application config file."
 
 	yamlFiles, err := findYAMLFiles(tmpDir, false)
@@ -770,7 +762,7 @@ func TestIntegrationHTMLOutputFormat(t *testing.T) {
 	assert.NoError(t, os.MkdirAll(subDir, 0755))
 	assert.NoError(t, os.WriteFile(filepath.Join(subDir, "service.yaml"), []byte("test: svc"), 0644))
 
-	mockClient := NewMockOllamaClient()
+	mockClient := NewMockLLMProvider()
 	mockClient.DefaultResponse = "Service deployment config."
 
 	yamlFiles, err := findYAMLFiles(tmpDir, false)
