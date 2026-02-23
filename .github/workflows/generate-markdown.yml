@@ -4,6 +4,8 @@ on:
 
 # This workflow generates markdown files for telco-reference.
 
+permissions: read-all
+
 jobs:
   ollama:
     runs-on: ubuntu-latest
