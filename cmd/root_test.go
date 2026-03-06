@@ -137,7 +137,7 @@ func TestWriteIndividualSummary(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := writeIndividualSummary(baseDir, tc.filePath, tc.summary)
+			err := writeIndividualSummary(repoRoot, baseDir, tc.filePath, tc.summary)
 			assert.NoError(t, err)
 
 			// Verify cache directory was created
@@ -177,7 +177,7 @@ func TestWriteIndividualSummaryFallback(t *testing.T) {
 	otherDir := filepath.Join(repoRoot, "other")
 	assert.NoError(t, os.MkdirAll(otherDir, 0755))
 
-	err = writeIndividualSummary(baseDir, filepath.Join(otherDir, "external.yaml"), "External summary.")
+	err = writeIndividualSummary(repoRoot, baseDir, filepath.Join(otherDir, "external.yaml"), "External summary.")
 	assert.NoError(t, err)
 
 	// Should fall back to base name only

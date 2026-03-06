@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"strings"
 
 	ollama "github.com/ollama/ollama/api"
 )
@@ -43,15 +44,15 @@ func (o *OllamaProvider) Summarize(ctx context.Context, content string, prompt s
 		Stream: &falseVar,
 	}
 
-	var summary string
+	var sb strings.Builder
 	err := o.client.Chat(ctx, chatReq, func(resp ollama.ChatResponse) error {
-		summary += resp.Message.Content
+		sb.WriteString(resp.Message.Content)
 		return nil
 	})
 	if err != nil {
 		return "", err
 	}
-	return summary, nil
+	return sb.String(), nil
 }
 
 // Available implements LLMProvider.Available by checking the Ollama model list.
