@@ -155,6 +155,27 @@ func groupSummariesByDir(yamlFiles []string, summaries map[string]string, baseDi
 	return grouped
 }
 
+// sortedDirs returns the directory keys from grouped in sorted order,
+// and sorts the file entries within each directory alphabetically by filename.
+func sortedDirs(grouped map[string][][2]string) ([]string, map[string][][2]string) {
+	dirs := make([]string, 0, len(grouped))
+	for dir := range grouped {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	sorted := make(map[string][][2]string, len(grouped))
+	for _, dir := range dirs {
+		files := make([][2]string, len(grouped[dir]))
+		copy(files, grouped[dir])
+		sort.Slice(files, func(i, j int) bool {
+			return files[i][0] < files[j][0]
+		})
+		sorted[dir] = files
+	}
+	return dirs, sorted
+}
+
 // writeMarkdownSummary writes the grouped summaries to a markdown file in the base directory.
 func writeMarkdownSummary(baseDir string, grouped map[string][][2]string) error {
 	mdPath := filepath.Join(baseDir, markdownFileName)
@@ -173,24 +194,13 @@ func writeMarkdownSummary(baseDir string, grouped map[string][][2]string) error 
 		return err
 	}
 
-	dirs := make([]string, 0, len(grouped))
-	for dir := range grouped {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
+	dirs, sorted := sortedDirs(grouped)
 
 	for _, dir := range dirs {
-		files := grouped[dir]
-		// Sort files alphabetically by filename
-		sortedFiles := make([][2]string, len(files))
-		copy(sortedFiles, files)
-		sort.Slice(sortedFiles, func(i, j int) bool {
-			return sortedFiles[i][0] < sortedFiles[j][0]
-		})
 		if _, err := fmt.Fprintf(f, "\n## [%s/](../%s/)\n", dir, dir); err != nil {
 			return err
 		}
-		for _, entry := range sortedFiles {
+		for _, entry := range sorted[dir] {
 			if _, err := fmt.Fprintf(f, "- [%s](../%s/%s): %s\n", entry[0], dir, entry[0], entry[1]); err != nil {
 				return err
 			}
@@ -223,21 +233,11 @@ func writeJSONSummary(baseDir string, grouped map[string][][2]string) error {
 		Directories:   make(map[string][]JSONFileEntry),
 	}
 
-	dirs := make([]string, 0, len(grouped))
-	for dir := range grouped {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
+	dirs, sorted := sortedDirs(grouped)
 
 	for _, dir := range dirs {
-		files := grouped[dir]
-		sortedFiles := make([][2]string, len(files))
-		copy(sortedFiles, files)
-		sort.Slice(sortedFiles, func(i, j int) bool {
-			return sortedFiles[i][0] < sortedFiles[j][0]
-		})
 		dirKey := dir + "/"
-		for _, entry := range sortedFiles {
+		for _, entry := range sorted[dir] {
 			output.Directories[dirKey] = append(output.Directories[dirKey], JSONFileEntry{
 				File:    entry[0],
 				Path:    filepath.Join(dir, entry[0]),
@@ -302,25 +302,15 @@ func writeHTMLSummary(baseDir string, grouped map[string][][2]string) error {
 		return fmt.Errorf("failed to parse HTML template: %w", err)
 	}
 
-	dirs := make([]string, 0, len(grouped))
-	for dir := range grouped {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
+	dirs, sorted := sortedDirs(grouped)
 
 	var data htmlData
 	data.GeneratedAt = time.Now().UTC().Format(time.RFC3339)
 	data.Model = ModelName
 
 	for _, dir := range dirs {
-		files := grouped[dir]
-		sortedFiles := make([][2]string, len(files))
-		copy(sortedFiles, files)
-		sort.Slice(sortedFiles, func(i, j int) bool {
-			return sortedFiles[i][0] < sortedFiles[j][0]
-		})
 		hd := htmlDir{Name: dir}
-		for _, entry := range sortedFiles {
+		for _, entry := range sorted[dir] {
 			hd.Files = append(hd.Files, JSONFileEntry{
 				File:    entry[0],
 				Path:    filepath.Join(dir, entry[0]),
@@ -357,8 +347,13 @@ func writeSummary(baseDir string, grouped map[string][][2]string) error {
 	}
 }
 
+var progressMu sync.Mutex
+
 // progressBar displays a simple progress bar in the terminal.
+// It is safe to call from multiple goroutines.
 func progressBar(current, total int) {
+	progressMu.Lock()
+	defer progressMu.Unlock()
 	percent := float64(current) / float64(total) * 100
 	barLen := 40
 	filledLen := int(float64(barLen) * float64(current) / float64(total))
@@ -425,12 +420,8 @@ func parseSummaryLines(lines []string, existing map[string]string) {
 	}
 }
 
-// writeIndividualSummary writes the summary for a single YAML file to a hidden cache directory in the repo root (where the binary is called from).
-func writeIndividualSummary(baseDir, filePath, summary string) error {
-	repoRoot, err := os.Getwd()
-	if err != nil {
-		return err
-	}
+// writeIndividualSummary writes the summary for a single YAML file to a hidden cache directory in the given repo root.
+func writeIndividualSummary(repoRoot, baseDir, filePath, summary string) error {
 	cacheDir := filepath.Join(repoRoot, cacheDirName)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return err
@@ -479,11 +470,14 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 		toProcess = append(toProcess, file)
 	}
 
-	// Determine effective concurrency
-	workers := concurrency
-	if workers < 1 {
-		workers = 1
+	// Cache repo root for writeIndividualSummary calls
+	var repoRoot string
+	if localCache {
+		repoRoot, _ = os.Getwd()
 	}
+
+	// Determine effective concurrency
+	workers := max(concurrency, 1)
 	if workers > len(toProcess) && len(toProcess) > 0 {
 		workers = len(toProcess)
 	}
@@ -517,7 +511,7 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 			mu.Unlock()
 
 			if localCache {
-				_ = writeIndividualSummary(dir, f, summary)
+				_ = writeIndividualSummary(repoRoot, dir, f, summary)
 			}
 
 			processed.Add(1)
