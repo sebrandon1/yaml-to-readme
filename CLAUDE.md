@@ -70,7 +70,7 @@ make info              # Show build info
 - **Ollama** (default provider): [Ollama](https://ollama.com/) must be installed and running locally
 - **OpenAI** (optional provider): Requires `OPENAI_API_KEY` env var; set `OPENAI_BASE_URL` for custom endpoints
 - Default model: `llama3.2:latest` (can override with `--model` flag)
-- Go 1.25+
+- Go 1.26+
 
 ## Code Style
 
