@@ -2,8 +2,6 @@ module github.com/sebrandon1/yaml-to-readme
 
 go 1.26.2
 
-toolchain go1.26.2
-
 require (
 	github.com/ollama/ollama v0.20.3
 	github.com/spf13/cobra v1.10.2
