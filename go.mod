@@ -2,7 +2,7 @@ module github.com/sebrandon1/yaml-to-readme
 
 go 1.26.0
 
-toolchain go1.26.2
+toolchain go1.26.3
 
 require (
 	github.com/ollama/ollama v0.24.0
