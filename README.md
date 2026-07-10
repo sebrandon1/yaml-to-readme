@@ -21,7 +21,7 @@ A CLI tool to recursively summarize YAML files in a directory using a local LLM,
 
 - **Ollama** (default): [Install Ollama](https://ollama.com/) and pull a model (default: `llama3.2:latest`)
 - **OpenAI** (optional): Set `OPENAI_API_KEY` environment variable
-- Go 1.25+ to build from source
+- Go 1.26+ to build from source
 
 ### Build and Run
 
