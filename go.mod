@@ -5,7 +5,7 @@ go 1.26.0
 toolchain go1.26.5
 
 require (
-	github.com/ollama/ollama v0.33.2
+	github.com/ollama/ollama v0.33.3
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 )
