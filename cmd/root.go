@@ -382,6 +382,44 @@ func writeHTMLSummary(baseDir string, grouped map[string][][2]string) error {
 	return tmpl.Execute(f, data)
 }
 
+// writeGitHubSummary appends markdown to the $GITHUB_STEP_SUMMARY file.
+func writeGitHubSummary(grouped map[string][][2]string) error {
+	summaryPath := os.Getenv("GITHUB_STEP_SUMMARY")
+	if summaryPath == "" {
+		return fmt.Errorf("GITHUB_STEP_SUMMARY environment variable is not set; github-summary format requires a GitHub Actions environment")
+	}
+
+	f, err := os.OpenFile(summaryPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to open GITHUB_STEP_SUMMARY: %w", err)
+	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "error closing GITHUB_STEP_SUMMARY: %v\n", cerr)
+		}
+	}()
+
+	if _, err := fmt.Fprintf(f, "## YAML File Summary\n\n"); err != nil {
+		return err
+	}
+
+	dirs, sorted := sortedDirs(grouped)
+	for _, dir := range dirs {
+		if _, err := fmt.Fprintf(f, "### %s/\n\n", dir); err != nil {
+			return err
+		}
+		for _, entry := range sorted[dir] {
+			if _, err := fmt.Fprintf(f, "- **%s**: %s\n", entry[0], entry[1]); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // writeSummary dispatches to the appropriate writer based on the outputFormat flag.
 func writeSummary(baseDir string, grouped map[string][][2]string) error {
 	switch outputFormat {
@@ -389,6 +427,8 @@ func writeSummary(baseDir string, grouped map[string][][2]string) error {
 		return writeJSONSummary(baseDir, grouped)
 	case "html":
 		return writeHTMLSummary(baseDir, grouped)
+	case "github-summary":
+		return writeGitHubSummary(grouped)
 	default:
 		return writeMarkdownSummary(baseDir, grouped)
 	}
@@ -659,7 +699,11 @@ func runSummarizeYamlWithProvider(dir string, llm LLMProvider) error {
 	if err := writeSummary(dir, grouped); err != nil {
 		return fmt.Errorf("failed to write output: %w", err)
 	}
-	fmt.Printf("\n%s summary written to %s\n", outputFormat, mdPath)
+	if outputFormat == "github-summary" {
+		fmt.Printf("\n%s summary written to $GITHUB_STEP_SUMMARY\n", outputFormat)
+	} else {
+		fmt.Printf("\n%s summary written to %s\n", outputFormat, mdPath)
+	}
 	fmt.Printf("Files processed (new summaries): %d\n", processed)
 	fmt.Printf("Files skipped (already summarized): %d\n", skipped)
 	fmt.Printf("Time elapsed: %s\n", elapsed.Round(time.Second))
@@ -698,7 +742,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview which YAML files would be processed without calling the LLM")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
-	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, or html")
+	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, html, or github-summary")
 	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default) or openai")
 	rootCmd.Flags().DurationVar(&llmTimeout, "timeout", 60*time.Second, "Timeout for each LLM request (e.g. 30s, 2m)")
 	rootCmd.Flags().StringArrayVar(&includeGlobs, "include", nil, "Glob patterns to include (e.g. 'charts/**'); can be repeated")
