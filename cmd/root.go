@@ -147,6 +147,10 @@ func cleanSummary(summary string) string {
 	return strings.Join(cleaned, " ")
 }
 
+// activePrompt holds the prompt used for each LLM call. Defaults to SummarizePrompt;
+// overridden by --prompt-template at startup.
+var activePrompt = SummarizePrompt
+
 // summarizeYAMLFile uses an LLM provider to generate a short summary for a YAML file.
 func summarizeYAMLFile(ctx context.Context, provider LLMProvider, file string) (string, error) {
 	slog.Debug("summarizing file", "file", file, "model", ModelName, "provider", provider.Name())
@@ -161,7 +165,18 @@ func summarizeYAMLFile(ctx context.Context, provider LLMProvider, file string) (
 		return "", fmt.Errorf("invalid YAML syntax in %s: %w", file, err)
 	}
 
-	summary, err := provider.Summarize(ctx, string(content), SummarizePrompt)
+	var prompt, body string
+	if strings.Contains(activePrompt, "{content}") || strings.Contains(activePrompt, "{filename}") {
+		rendered := strings.ReplaceAll(activePrompt, "{filename}", filepath.Base(file))
+		rendered = strings.ReplaceAll(rendered, "{content}", string(content))
+		prompt = rendered
+		body = ""
+	} else {
+		prompt = activePrompt
+		body = string(content)
+	}
+
+	summary, err := provider.Summarize(ctx, body, prompt)
 	if err != nil {
 		return "", fmt.Errorf("%s error for %s: %w", provider.Name(), file, err)
 	}
@@ -686,6 +701,18 @@ func createProvider() (LLMProvider, error) {
 // runSummarizeYaml is the main logic for the summarize-yaml command.
 func runSummarizeYaml(dir string) error {
 	setupLogging()
+
+	if promptTemplatePath != "" {
+		tmplBytes, err := os.ReadFile(promptTemplatePath)
+		if err != nil {
+			return fmt.Errorf("failed to read prompt template %s: %w", promptTemplatePath, err)
+		}
+		activePrompt = string(tmplBytes)
+		slog.Debug("using custom prompt template", "path", promptTemplatePath)
+	} else {
+		activePrompt = SummarizePrompt
+	}
+
 	if dryRun {
 		return runDryRun(dir)
 	}
@@ -775,6 +802,7 @@ var provider string
 var llmTimeout time.Duration
 var includeGlobs []string
 var excludeGlobs []string
+var promptTemplatePath string
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -791,6 +819,7 @@ func init() {
 	rootCmd.Flags().DurationVar(&llmTimeout, "timeout", 60*time.Second, "Timeout for each LLM request (e.g. 30s, 2m)")
 	rootCmd.Flags().StringArrayVar(&includeGlobs, "include", nil, "Glob patterns to include (e.g. 'charts/**'); can be repeated")
 	rootCmd.Flags().StringArrayVar(&excludeGlobs, "exclude", nil, "Glob patterns to exclude (e.g. 'testdata/**'); can be repeated")
+	rootCmd.Flags().StringVar(&promptTemplatePath, "prompt-template", "", "Path to a custom prompt template file; supports {filename} and {content} placeholders")
 }
 
 // Execute runs the root Cobra command.
