@@ -804,6 +804,9 @@ var rootCmd = &cobra.Command{
 	Use:   "summarize-yaml [directory]",
 	Short: "Summarize YAML files in a directory using Ollama",
 	Args:  cobra.ExactArgs(1),
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		return applyFileConfig(cmd, cfgFile)
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSummarizeYaml(args[0])
 	},
@@ -821,6 +824,7 @@ var llmTimeout time.Duration
 var includeGlobs []string
 var excludeGlobs []string
 var promptTemplatePath string
+var cfgFile string
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -838,6 +842,7 @@ func init() {
 	rootCmd.Flags().StringArrayVar(&includeGlobs, "include", nil, "Glob patterns to include (e.g. 'charts/**'); can be repeated")
 	rootCmd.Flags().StringArrayVar(&excludeGlobs, "exclude", nil, "Glob patterns to exclude (e.g. 'testdata/**'); can be repeated")
 	rootCmd.Flags().StringVar(&promptTemplatePath, "prompt-template", "", "Path to a custom prompt template file; supports {filename} and {content} placeholders")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path (default: .readmebuilder.yaml in the current directory)")
 }
 
 // Execute runs the root Cobra command.
