@@ -505,7 +505,9 @@ func processYAMLFiles(yamlFiles []string, dir string, existingSummaries map[stri
 			defer wg.Done()
 			defer func() { <-sem }() // Release semaphore slot
 
-			summary, err := summarizeYAMLFile(context.Background(), provider, f)
+			ctx, cancel := context.WithTimeout(context.Background(), llmTimeout)
+			defer cancel()
+			summary, err := summarizeYAMLFile(ctx, provider, f)
 			if err != nil {
 				slog.Error("failed to summarize file", "file", f, "error", err)
 				completed.Add(1)
@@ -642,6 +644,7 @@ var concurrency int
 var verbose bool
 var outputFormat string
 var provider string
+var llmTimeout time.Duration
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -655,6 +658,7 @@ func init() {
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
 	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, or html")
 	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default) or openai")
+	rootCmd.Flags().DurationVar(&llmTimeout, "timeout", 60*time.Second, "Timeout for each LLM request (e.g. 30s, 2m)")
 }
 
 // Execute runs the root Cobra command.
