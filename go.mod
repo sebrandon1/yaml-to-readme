@@ -8,6 +8,7 @@ require (
 	github.com/ollama/ollama v0.33.3
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -24,5 +25,4 @@ require (
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

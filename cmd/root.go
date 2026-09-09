@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 // setupLogging configures the slog default logger based on the verbose flag.
@@ -112,6 +113,12 @@ func summarizeYAMLFile(ctx context.Context, provider LLMProvider, file string) (
 	content, err := os.ReadFile(file)
 	if err != nil {
 		return "", fmt.Errorf("failed to read %s: %w", file, err)
+	}
+
+	var parsed interface{}
+	if err := yaml.Unmarshal(content, &parsed); err != nil {
+		slog.Warn("skipping file with invalid YAML syntax", "file", file, "error", err)
+		return "", fmt.Errorf("invalid YAML syntax in %s: %w", file, err)
 	}
 
 	summary, err := provider.Summarize(ctx, string(content), SummarizePrompt)
