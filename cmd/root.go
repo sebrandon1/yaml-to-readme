@@ -63,7 +63,23 @@ var markdownFileName string = DefaultMarkdownFileName
 // cacheDirName is configurable via the --cache-dir flag and defaults to DefaultCacheDirName.
 var cacheDirName string = DefaultCacheDirName
 
+// matchGlob reports whether relPath matches the glob pattern.
+// It supports ** as a wildcard for any directory depth.
+func matchGlob(pattern, relPath string) bool {
+	relPath = filepath.ToSlash(relPath)
+	pattern = filepath.ToSlash(pattern)
+	if idx := strings.Index(pattern, "**"); idx >= 0 {
+		return strings.HasPrefix(relPath, pattern[:idx])
+	}
+	if matched, _ := filepath.Match(pattern, relPath); matched {
+		return true
+	}
+	matched, _ := filepath.Match(pattern, filepath.Base(relPath))
+	return matched
+}
+
 // findYAMLFiles recursively finds all YAML files under the given directory path.
+// Files are filtered by includeGlobs (if non-empty) and excludeGlobs.
 func findYAMLFiles(dir string, includeHidden bool) ([]string, error) {
 	var yamlFiles []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -76,9 +92,33 @@ func findYAMLFiles(dir string, includeHidden bool) ([]string, error) {
 			return filepath.SkipDir
 		}
 
-		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".yaml") || strings.HasSuffix(info.Name(), ".yml")) {
-			yamlFiles = append(yamlFiles, path)
+		if info.IsDir() || (!strings.HasSuffix(info.Name(), ".yaml") && !strings.HasSuffix(info.Name(), ".yml")) {
+			return nil
 		}
+
+		relPath, _ := filepath.Rel(dir, path)
+
+		if len(includeGlobs) > 0 {
+			included := false
+			for _, pattern := range includeGlobs {
+				if matchGlob(pattern, relPath) {
+					included = true
+					break
+				}
+			}
+			if !included {
+				return nil
+			}
+		}
+
+		for _, pattern := range excludeGlobs {
+			if matchGlob(pattern, relPath) {
+				slog.Debug("excluding file", "file", relPath, "pattern", pattern)
+				return nil
+			}
+		}
+
+		yamlFiles = append(yamlFiles, path)
 		return nil
 	})
 	slog.Debug("found YAML files", "count", len(yamlFiles), "dir", dir, "includeHidden", includeHidden)
@@ -645,6 +685,8 @@ var verbose bool
 var outputFormat string
 var provider string
 var llmTimeout time.Duration
+var includeGlobs []string
+var excludeGlobs []string
 
 func init() {
 	rootCmd.Flags().BoolVar(&regenerate, "regenerate", false, "Regenerate all summaries, even if they already exist in yaml_details.md")
@@ -659,6 +701,8 @@ func init() {
 	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, or html")
 	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default) or openai")
 	rootCmd.Flags().DurationVar(&llmTimeout, "timeout", 60*time.Second, "Timeout for each LLM request (e.g. 30s, 2m)")
+	rootCmd.Flags().StringArrayVar(&includeGlobs, "include", nil, "Glob patterns to include (e.g. 'charts/**'); can be repeated")
+	rootCmd.Flags().StringArrayVar(&excludeGlobs, "exclude", nil, "Glob patterns to exclude (e.g. 'testdata/**'); can be repeated")
 }
 
 // Execute runs the root Cobra command.
