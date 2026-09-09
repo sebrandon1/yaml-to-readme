@@ -10,7 +10,7 @@ A CLI tool to recursively summarize YAML files in a directory using a local LLM,
 
 - Recursive YAML file discovery with progress bar
 - Multiple LLM providers: Ollama (local) and OpenAI-compatible APIs
-- Output formats: Markdown, JSON, and HTML
+- Output formats: Markdown, JSON, HTML, and GitHub Actions step summary
 - Concurrent processing with configurable workers
 - Smart caching to skip already-summarized files
 - Dry-run mode for previewing file discovery
@@ -21,7 +21,7 @@ A CLI tool to recursively summarize YAML files in a directory using a local LLM,
 
 - **Ollama** (default): [Install Ollama](https://ollama.com/) and pull a model (default: `llama3.2:latest`)
 - **OpenAI** (optional): Set `OPENAI_API_KEY` environment variable
-- Go 1.25+ to build from source
+- Go 1.27+ to build from source
 
 ### Build and Run
 
@@ -44,6 +44,7 @@ make build
 | Guide | Description |
 |-------|-------------|
 | [CLI Reference](docs/cli-reference.md) | All flags, output formats, and environment variables |
+| [Configuration](docs/configuration.md) | Config file keys, environment variables, and priority order |
 | [Examples](docs/examples.md) | Detailed usage examples for every feature |
 | [Docker](docs/docker.md) | Container build and run instructions |
 
