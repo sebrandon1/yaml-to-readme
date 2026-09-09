@@ -507,6 +507,31 @@ func parseSummaryLines(lines []string, existing map[string]string) {
 	}
 }
 
+// cacheKey returns the cache filename for a YAML file relative path.
+func cacheKey(relPath string) string {
+	return strings.ReplaceAll(relPath, string(os.PathSeparator), "_") + ".md"
+}
+
+// loadLocalCacheSummaries reads per-file summaries from the cache directory for any YAML files
+// that have a matching cache entry. Used to resume interrupted runs when --localcache is set.
+func loadLocalCacheSummaries(repoRoot, baseDir string, yamlFiles []string) map[string]string {
+	cacheDir := filepath.Join(repoRoot, cacheDirName)
+	cached := make(map[string]string)
+	for _, file := range yamlFiles {
+		relPath, err := filepath.Rel(baseDir, file)
+		if err != nil || strings.HasPrefix(relPath, "..") {
+			continue
+		}
+		cacheFilePath := filepath.Join(cacheDir, cacheKey(relPath))
+		data, err := os.ReadFile(cacheFilePath)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		cached[filepath.ToSlash(relPath)] = string(data)
+	}
+	return cached
+}
+
 // writeIndividualSummary writes the summary for a single YAML file to a hidden cache directory in the given repo root.
 func writeIndividualSummary(repoRoot, baseDir, filePath, summary string) error {
 	cacheDir := filepath.Join(repoRoot, cacheDirName)
@@ -519,8 +544,7 @@ func writeIndividualSummary(repoRoot, baseDir, filePath, summary string) error {
 		// If not under baseDir, fallback to base name only
 		relPath = filepath.Base(filePath)
 	}
-	cacheFile := strings.ReplaceAll(relPath, string(os.PathSeparator), "_")
-	cacheFilePath := filepath.Join(cacheDir, cacheFile+".md")
+	cacheFilePath := filepath.Join(cacheDir, cacheKey(relPath))
 	f, err := os.Create(cacheFilePath)
 	if err != nil {
 		return err
@@ -682,6 +706,26 @@ func runSummarizeYamlWithProvider(dir string, llm LLMProvider) error {
 	}
 	mdPath := filepath.Join(dir, markdownFileName)
 	existingSummaries := parseExistingSummaries(mdPath)
+
+	if localCache {
+		repoRoot, _ := os.Getwd()
+		for rel, summary := range loadLocalCacheSummaries(repoRoot, dir, yamlFiles) {
+			if _, ok := existingSummaries[rel]; !ok {
+				existingSummaries[rel] = summary
+			}
+		}
+	}
+
+	pending := 0
+	for _, file := range yamlFiles {
+		rel, _ := filepath.Rel(dir, file)
+		rel = filepath.ToSlash(rel)
+		if existingSummaries[rel] == "" {
+			pending++
+		}
+	}
+	fmt.Printf("YAML files found: %d  |  already cached: %d  |  pending: %d\n",
+		len(yamlFiles), len(yamlFiles)-pending, pending)
 
 	// Check if the model is available
 	modelAvailable, err := llm.Available(context.Background())
