@@ -688,14 +688,32 @@ func runDryRun(dir string) error {
 	return nil
 }
 
-// createProvider creates an LLMProvider based on the --provider flag.
-func createProvider() (LLMProvider, error) {
-	switch provider {
+// createSingleProvider creates one named LLMProvider.
+func createSingleProvider(name string) (LLMProvider, error) {
+	switch name {
 	case "openai":
 		return NewOpenAIProvider()
 	default:
 		return NewOllamaProvider()
 	}
+}
+
+// createProvider creates an LLMProvider based on the --provider flag.
+// Comma-separated values (e.g. "openai,ollama") build a FallbackProvider chain.
+func createProvider() (LLMProvider, error) {
+	names := strings.Split(provider, ",")
+	if len(names) == 1 {
+		return createSingleProvider(strings.TrimSpace(names[0]))
+	}
+	var chain []LLMProvider
+	for _, name := range names {
+		p, err := createSingleProvider(strings.TrimSpace(name))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create provider %q: %w", name, err)
+		}
+		chain = append(chain, p)
+	}
+	return &FallbackProvider{providers: chain}, nil
 }
 
 // runSummarizeYaml is the main logic for the summarize-yaml command.
@@ -815,7 +833,7 @@ func init() {
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
 	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, html, or github-summary")
-	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default) or openai")
+	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default), openai, or comma-separated fallback chain (e.g. openai,ollama)")
 	rootCmd.Flags().DurationVar(&llmTimeout, "timeout", 60*time.Second, "Timeout for each LLM request (e.g. 30s, 2m)")
 	rootCmd.Flags().StringArrayVar(&includeGlobs, "include", nil, "Glob patterns to include (e.g. 'charts/**'); can be repeated")
 	rootCmd.Flags().StringArrayVar(&excludeGlobs, "exclude", nil, "Glob patterns to exclude (e.g. 'testdata/**'); can be repeated")
