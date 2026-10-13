@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -435,9 +436,23 @@ func writeGitHubSummary(grouped map[string][][2]string) error {
 	return nil
 }
 
+// validFormats lists the output formats accepted by --format and the config "format" key.
+var validFormats = []string{"markdown", "json", "html", "github-summary"}
+
+// validateFormat returns an error when f is not one of validFormats, listing the
+// accepted values so a typo fails fast with an actionable message.
+func validateFormat(f string) error {
+	if !slices.Contains(validFormats, f) {
+		return fmt.Errorf("invalid --format %q: must be one of %s", f, strings.Join(validFormats, ", "))
+	}
+	return nil
+}
+
 // writeSummary dispatches to the appropriate writer based on the outputFormat flag.
 func writeSummary(baseDir string, grouped map[string][][2]string) error {
 	switch outputFormat {
+	case "markdown":
+		return writeMarkdownSummary(baseDir, grouped)
 	case "json":
 		return writeJSONSummary(baseDir, grouped)
 	case "html":
@@ -445,7 +460,7 @@ func writeSummary(baseDir string, grouped map[string][][2]string) error {
 	case "github-summary":
 		return writeGitHubSummary(grouped)
 	default:
-		return writeMarkdownSummary(baseDir, grouped)
+		return fmt.Errorf("invalid --format %q: must be one of %s", outputFormat, strings.Join(validFormats, ", "))
 	}
 }
 
@@ -719,6 +734,10 @@ func createProvider() (LLMProvider, error) {
 // runSummarizeYaml is the main logic for the summarize-yaml command.
 func runSummarizeYaml(dir string) error {
 	setupLogging()
+
+	if err := validateFormat(outputFormat); err != nil {
+		return err
+	}
 
 	if promptTemplatePath != "" {
 		tmplBytes, err := os.ReadFile(promptTemplatePath)
