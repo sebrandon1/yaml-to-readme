@@ -15,8 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sebrandon1/go-toolbox/cobrautil"
+	"github.com/sebrandon1/go-toolbox/yamlx"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // setupLogging configures the slog default logger based on the verbose flag.
@@ -160,7 +161,7 @@ func summarizeYAMLFile(ctx context.Context, provider LLMProvider, file string) (
 	}
 
 	var parsed interface{}
-	if err := yaml.Unmarshal(content, &parsed); err != nil {
+	if err := yamlx.Unmarshal(content, &parsed); err != nil {
 		slog.Warn("skipping file with invalid YAML syntax", "file", file, "error", err)
 		return "", fmt.Errorf("invalid YAML syntax in %s: %w", file, err)
 	}
@@ -843,9 +844,10 @@ func init() {
 	rootCmd.Flags().StringArrayVar(&excludeGlobs, "exclude", nil, "Glob patterns to exclude (e.g. 'testdata/**'); can be repeated")
 	rootCmd.Flags().StringVar(&promptTemplatePath, "prompt-template", "", "Path to a custom prompt template file; supports {filename} and {content} placeholders")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file path (default: .readmebuilder.yaml in the current directory)")
+	rootCmd.AddCommand(cobrautil.NewCompletionCommand(rootCmd, rootCmd.Name()))
 }
 
-// Execute runs the root Cobra command.
+// Execute runs the root Cobra command with a context cancelled on SIGINT/SIGTERM.
 func Execute() error {
-	return rootCmd.Execute()
+	return cobrautil.Execute(rootCmd)
 }
