@@ -1,16 +1,16 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
+
+	"github.com/sebrandon1/go-toolbox/httpx"
+	"github.com/sebrandon1/go-toolbox/retry"
 )
 
 // OpenAIProvider implements LLMProvider using the OpenAI-compatible chat completions API.
@@ -35,7 +35,7 @@ func NewOpenAIProvider() (*OpenAIProvider, error) {
 	return &OpenAIProvider{
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client:  &http.Client{},
+		client:  httpx.NewHTTPClient(httpx.Options{}),
 	}, nil
 }
 
@@ -71,16 +71,13 @@ type openAIModel struct {
 	ID string `json:"id"`
 }
 
-const maxRetries = 3
-
-// retryDelay returns the duration to wait before the next attempt.
-// It respects the Retry-After header when present, falling back to exponential backoff.
-func retryDelay(attempt int, retryAfter string) time.Duration {
-	if secs, err := strconv.Atoi(retryAfter); err == nil && secs > 0 {
-		return time.Duration(secs) * time.Second
-	}
-	return time.Duration(1<<uint(attempt)) * time.Second // 1s, 2s, 4s
-}
+const (
+	maxRetries = 3
+	// maxRetryAfterDelay is the cap applied to server-supplied Retry-After
+	// values. It is intentionally high so an explicit Retry-After is honored
+	// in full, matching the previous uncapped behavior.
+	maxRetryAfterDelay = 24 * time.Hour
+)
 
 // Summarize implements LLMProvider.Summarize using the OpenAI chat completions API.
 // Retries up to maxRetries times on HTTP 429 with exponential backoff or Retry-After.
@@ -96,70 +93,69 @@ func (o *OpenAIProvider) Summarize(ctx context.Context, content string, prompt s
 		Temperature: 0.3,
 	}
 
-	bodyBytes, err := json.Marshal(reqBody)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
-	}
-
 	url := o.baseURL + "/v1/chat/completions"
 
-	for attempt := range maxRetries {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
-		if err != nil {
-			return "", fmt.Errorf("failed to create request: %w", err)
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+o.apiKey)
+	req, err := httpx.NewRequestWithBody(ctx, http.MethodPost, url, reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+o.apiKey)
 
-		resp, err := o.client.Do(req)
-		if err != nil {
-			return "", fmt.Errorf("openai API request failed: %w", err)
-		}
-
-		respBody, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if readErr != nil {
-			return "", fmt.Errorf("failed to read response: %w", readErr)
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries-1 {
-			delay := retryDelay(attempt, resp.Header.Get("Retry-After"))
+	// Retry up to maxRetries times on HTTP 429. The HTTP policy replays the
+	// request body, honors Retry-After via httpx.ParseRetryAfter, and falls
+	// back to exponential backoff (1s, 2s) otherwise. Jitter is disabled so
+	// the backoff sequence stays deterministic.
+	resp, err := retry.Do(ctx, o.client, req,
+		retry.WithMaxAttempts(maxRetries),
+		retry.WithBaseDelay(time.Second),
+		retry.WithHTTPMaxDelay(maxRetryAfterDelay),
+		retry.WithRetryMethods(http.MethodPost),
+		retry.WithRetryStatus(func(status int) bool { return status == http.StatusTooManyRequests }),
+		retry.WithJitter(func(d time.Duration) time.Duration { return d }),
+		retry.WithHTTPOnRetry(func(attempt int, _ error, delay time.Duration) {
 			slog.Warn("openai rate limit hit, retrying", "attempt", attempt+1, "delay", delay)
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			case <-time.After(delay):
-			}
-			continue
+		}),
+	)
+	if err != nil {
+		if httpx.IsRateLimited(err) {
+			return "", fmt.Errorf("openai API rate limit exceeded after %d retries", maxRetries)
 		}
+		return "", fmt.Errorf("openai API request failed: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("openai API returned status %d: %s", resp.StatusCode, string(respBody))
-		}
-
-		var chatResp openAIChatResponse
-		if err := json.Unmarshal(respBody, &chatResp); err != nil {
-			return "", fmt.Errorf("failed to parse response: %w", err)
-		}
-
-		if chatResp.Error != nil {
-			return "", fmt.Errorf("openai API error: %s", chatResp.Error.Message)
-		}
-
-		if len(chatResp.Choices) == 0 {
-			return "", fmt.Errorf("openai API returned no choices")
-		}
-
-		return chatResp.Choices[0].Message.Content, nil
+	respBody, err := httpx.ReadLimited(resp.Body, httpx.DefaultMaxResponseBytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
-	return "", fmt.Errorf("openai API rate limit exceeded after %d retries", maxRetries)
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("openai API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var chatResp openAIChatResponse
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if chatResp.Error != nil {
+		return "", fmt.Errorf("openai API error: %s", chatResp.Error.Message)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("openai API returned no choices")
+	}
+
+	return chatResp.Choices[0].Message.Content, nil
 }
 
 // Available implements LLMProvider.Available by checking the OpenAI models endpoint.
 func (o *OpenAIProvider) Available(ctx context.Context) (bool, error) {
 	url := o.baseURL + "/v1/models"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := httpx.NewRequest(ctx, http.MethodGet, url)
 	if err != nil {
 		return false, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -177,7 +173,7 @@ func (o *OpenAIProvider) Available(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := httpx.ReadLimited(resp.Body, httpx.DefaultMaxResponseBytes)
 	if err != nil {
 		return false, fmt.Errorf("failed to read response: %w", err)
 	}

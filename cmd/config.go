@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sebrandon1/go-toolbox/yamlx"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 // fileConfig mirrors the subset of CLI flags that can be set via .readmebuilder.yaml.
@@ -30,12 +30,9 @@ func applyFileConfig(cmd *cobra.Command, cfgPath string) error {
 		paths = []string{".readmebuilder.yaml", ".readmebuilder.yml"}
 	}
 
-	var data []byte
 	var chosenPath string
 	for _, p := range paths {
-		var err error
-		data, err = os.ReadFile(p)
-		if err == nil {
+		if _, err := os.Stat(p); err == nil {
 			chosenPath = p
 			break
 		}
@@ -45,7 +42,7 @@ func applyFileConfig(cmd *cobra.Command, cfgPath string) error {
 	}
 
 	var cfg fileConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := yamlx.LoadFile(chosenPath, &cfg); err != nil {
 		return fmt.Errorf("error parsing config file %s: %w", chosenPath, err)
 	}
 
