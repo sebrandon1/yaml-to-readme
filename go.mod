@@ -6,7 +6,7 @@ toolchain go1.27.3
 
 require (
 	github.com/ollama/ollama v0.40.11
-	github.com/sebrandon1/go-toolbox v0.1.0
+	github.com/sebrandon1/go-toolbox v0.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
 )
