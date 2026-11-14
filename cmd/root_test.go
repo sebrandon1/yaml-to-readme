@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -300,4 +301,42 @@ func TestFindYAMLFilesHiddenDirectories(t *testing.T) {
 	assert.Contains(t, relPaths, filepath.Join("regular_dir", "nested.yaml"))
 	assert.Contains(t, relPaths, filepath.Join(".hidden", "hidden.yaml"))
 	assert.Contains(t, relPaths, filepath.Join(".hidden", "subdir", "deep.yaml"))
+}
+
+func TestValidateFormat(t *testing.T) {
+	for _, f := range []string{"markdown", "json", "html", "github-summary"} {
+		assert.NoError(t, validateFormat(f), "format %q should be valid", f)
+	}
+	for _, f := range []string{"", "jsno", "JSON", "md", "yaml", "markdown "} {
+		err := validateFormat(f)
+		assert.Error(t, err, "format %q should be rejected", f)
+		if err != nil {
+			assert.Contains(t, err.Error(), "invalid --format")
+		}
+	}
+}
+
+func TestRunSummarizeYamlRejectsInvalidFormat(t *testing.T) {
+	origFormat := outputFormat
+	defer func() { outputFormat = origFormat }()
+	outputFormat = "jsno"
+
+	err := runSummarizeYaml(t.TempDir())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid --format "jsno"`)
+}
+
+func TestInvalidConfigFormatIsRejected(t *testing.T) {
+	origFormat := outputFormat
+	defer func() { outputFormat = origFormat }()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, ".readmebuilder.yaml")
+	assert.NoError(t, os.WriteFile(cfgPath, []byte("format: jsno\n"), 0o644))
+
+	c := &cobra.Command{Use: "test"}
+	c.Flags().StringVar(&outputFormat, "format", "markdown", "output format")
+	assert.NoError(t, applyFileConfig(c, cfgPath))
+	assert.Equal(t, "jsno", outputFormat)
+	assert.Error(t, validateFormat(outputFormat))
 }
