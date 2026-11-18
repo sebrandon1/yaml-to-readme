@@ -439,11 +439,23 @@ func writeGitHubSummary(grouped map[string][][2]string) error {
 // validFormats lists the output formats accepted by --format and the config "format" key.
 var validFormats = []string{"markdown", "json", "html", "github-summary"}
 
+// formatList and formatHelp are derived from validFormats so the flag help text
+// cannot drift away from the accepted set.
+var formatList = strings.Join(validFormats, ", ")
+var formatHelp = "Output format: " + strings.Join(validFormats[:len(validFormats)-1], ", ") + ", or " + validFormats[len(validFormats)-1]
+
+// invalidFormatError reports an unsupported format. The value may come from --format
+// or from the config file's "format" key, so the message names both sources instead
+// of pointing the user at the wrong file.
+func invalidFormatError(f string) error {
+	return fmt.Errorf("invalid format %q: must be one of %s (from --format or the config \"format\" key)", f, formatList)
+}
+
 // validateFormat returns an error when f is not one of validFormats, listing the
 // accepted values so a typo fails fast with an actionable message.
 func validateFormat(f string) error {
 	if !slices.Contains(validFormats, f) {
-		return fmt.Errorf("invalid --format %q: must be one of %s", f, strings.Join(validFormats, ", "))
+		return invalidFormatError(f)
 	}
 	return nil
 }
@@ -460,7 +472,7 @@ func writeSummary(baseDir string, grouped map[string][][2]string) error {
 	case "github-summary":
 		return writeGitHubSummary(grouped)
 	default:
-		return fmt.Errorf("invalid --format %q: must be one of %s", outputFormat, strings.Join(validFormats, ", "))
+		return invalidFormatError(outputFormat)
 	}
 }
 
@@ -855,7 +867,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview which YAML files would be processed without calling the LLM")
 	rootCmd.Flags().IntVarP(&concurrency, "concurrency", "j", 1, "Number of concurrent workers for processing YAML files")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
-	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", "Output format: markdown, json, html, or github-summary")
+	rootCmd.Flags().StringVar(&outputFormat, "format", "markdown", formatHelp)
 	rootCmd.Flags().StringVar(&provider, "provider", "ollama", "LLM provider: ollama (default), openai, or comma-separated fallback chain (e.g. openai,ollama)")
 	rootCmd.Flags().DurationVar(&llmTimeout, "timeout", 60*time.Second, "Timeout for each LLM request (e.g. 30s, 2m)")
 	rootCmd.Flags().StringArrayVar(&includeGlobs, "include", nil, "Glob patterns to include (e.g. 'charts/**'); can be repeated")

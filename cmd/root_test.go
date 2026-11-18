@@ -311,7 +311,7 @@ func TestValidateFormat(t *testing.T) {
 		err := validateFormat(f)
 		assert.Error(t, err, "format %q should be rejected", f)
 		if err != nil {
-			assert.Contains(t, err.Error(), "invalid --format")
+			assert.Contains(t, err.Error(), "invalid format")
 		}
 	}
 }
@@ -323,7 +323,7 @@ func TestRunSummarizeYamlRejectsInvalidFormat(t *testing.T) {
 
 	err := runSummarizeYaml(t.TempDir())
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), `invalid --format "jsno"`)
+	assert.Contains(t, err.Error(), `invalid format "jsno"`)
 }
 
 func TestInvalidConfigFormatIsRejected(t *testing.T) {
@@ -338,5 +338,13 @@ func TestInvalidConfigFormatIsRejected(t *testing.T) {
 	c.Flags().StringVar(&outputFormat, "format", "markdown", "output format")
 	assert.NoError(t, applyFileConfig(c, cfgPath))
 	assert.Equal(t, "jsno", outputFormat)
-	assert.Error(t, validateFormat(outputFormat))
+
+	// A bad value copied from the config file must be rejected on the real run path,
+	// not only by validateFormat in isolation.
+	err := runSummarizeYaml(t.TempDir())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid format "jsno"`)
+	// The message must not imply --format was the source: the value came from the config file.
+	assert.NotContains(t, err.Error(), "--format \"")
+	assert.Contains(t, err.Error(), "config")
 }
